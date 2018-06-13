@@ -19,7 +19,10 @@ import (
 )
 
 func main() {
-	Repl()
+	scanner := bufio.NewScanner(os.Stdin)
+	for err := Repl(scanner); err != nil; err = Repl(scanner) {
+		fmt.Println(err)
+	}
 }
 
 /*
@@ -241,9 +244,18 @@ func String(v scmer) string {
 	}
 }
 
-func Repl() {
-	scanner := bufio.NewScanner(os.Stdin)
+func Repl(scanner *bufio.Scanner) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			var ok bool
+			err, ok = r.(error)
+			if !ok {
+				err = fmt.Errorf("pkg: %v", r)
+			}
+		}
+	}()
 	for fmt.Print("> "); scanner.Scan(); fmt.Print("> ") {
 		fmt.Println("==>", String(eval(read(scanner.Text()), &globalenv)))
 	}
+	return nil
 }

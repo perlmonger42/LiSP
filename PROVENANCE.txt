@@ -1,5 +1,0 @@
-This interpreter was downloaded from
-[scm.go](https://gist.github.com/pkelchte/c2bd76b9f8f9cd603b3c).
-
-It was created by
-[Pieter Kelchtermans](https://github.com/pkelchte).
