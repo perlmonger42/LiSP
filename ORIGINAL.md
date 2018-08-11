@@ -1,4 +1,4 @@
-/*
+/* vim: set filetype=go: */
  * A minimal Scheme interpreter, as seen in lis.py and SICP
  * http://norvig.com/lispy.html
  * http://mitpress.mit.edu/sicp/full-text/sicp/book/node77.html
@@ -9,28 +9,18 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"log"
 	"os"
 	"reflect"
+	"strconv"
 	"strings"
-
-	"github.com/perlmonger42/LiSP/scan"
 )
 
 func main() {
-	scanner := scan.NewScanner("<stdin>", scan.NewConsoleReader())
-	for err := Repl(scanner); err != nil; err = Repl(scanner) {
-		fmt.Println(err)
-	}
+	Repl()
 }
-
-//func main() {
-//	scanner := scan.NewScanner("<str>", strings.NewReader("(list 1)"))
-//	for err := Repl(scanner); err != nil; err = Repl(scanner) {
-//		fmt.Println(err)
-//	}
-//}
 
 /*
  Eval / Apply
@@ -129,12 +119,6 @@ func (e *env) Find(s symbol) *env {
 
 var globalenv env
 
-func listPrimitive() scmer {
-	scanner := scan.NewScanner("<str>", strings.NewReader("(lambda z z)"))
-	expr, _ := read(scanner)
-	return eval(expr, &globalenv)
-}
-
 func init() {
 	globalenv = env{
 		vars{ //aka an incomplete set of compiled-in functions
@@ -186,7 +170,9 @@ func init() {
 			"cdr": func(a ...scmer) scmer {
 				return a[0].([]scmer)[1:]
 			},
-			"list": listPrimitive(),
+			"list": eval(read(
+				"(lambda z z)"),
+				&globalenv),
 		},
 		nil}
 }
@@ -200,6 +186,43 @@ type scmer interface{}
 
 type symbol string  //symbols are represented by strings
 type number float64 //numbers by float64
+
+func read(s string) (expression scmer) {
+	tokens := tokenize(s)
+	return readFrom(&tokens)
+}
+
+//Syntactic Analysis
+func readFrom(tokens *[]string) (expression scmer) {
+	//pop first element from tokens
+	token := (*tokens)[0]
+	*tokens = (*tokens)[1:]
+	switch token {
+	case "(": //a list begins
+		L := make([]scmer, 0)
+		for (*tokens)[0] != ")" {
+			if i := readFrom(tokens); i != symbol("") {
+				L = append(L, i)
+			}
+		}
+		*tokens = (*tokens)[1:]
+		return L
+	default: //an atom occurs
+		if f, err := strconv.ParseFloat(token, 64); err == nil {
+			return number(f)
+		} else {
+			return symbol(token)
+		}
+	}
+}
+
+//Lexical Analysis
+func tokenize(s string) []string {
+	return strings.Split(
+		strings.Replace(strings.Replace(s, "(", "( ",
+			-1), ")", " )",
+			-1), " ")
+}
 
 /*
  Interactivity
@@ -218,25 +241,9 @@ func String(v scmer) string {
 	}
 }
 
-func Repl(scanner *scan.Scanner) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			var ok bool
-			err, ok = r.(error)
-			if !ok {
-				err = fmt.Errorf("pkg: %v", r)
-			}
-		}
-	}()
-	for {
-		if expr, err := read(scanner); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s", err)
-		} else if expr == symbol("#%EOF") {
-			break
-		} else {
-			fmt.Println("==>", String(eval(expr, &globalenv)))
-		}
-
+func Repl() {
+	scanner := bufio.NewScanner(os.Stdin)
+	for fmt.Print("> "); scanner.Scan(); fmt.Print("> ") {
+		fmt.Println("==>", String(eval(read(scanner.Text()), &globalenv)))
 	}
-	return nil
 }
