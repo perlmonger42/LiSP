@@ -11,7 +11,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"reflect"
 	"strings"
 
@@ -21,8 +20,36 @@ import (
 /*
  Eval / Apply
 */
+var Tracing bool
+
+func TopLevelEvaluate(e scmer) scmer {
+	//// if isDefineForm(e) {
+	//// 	return Define(e, &globalEnv)
+	//// }
+	return eval(e, &globalenv)
+}
+
+var depth int
+
+func indent() { depth += 1 }
+func undent() { depth -= 1 }
+func print_indent() {
+	for i := 0; i < depth; i += 1 {
+		fmt.Print("  ")
+	}
+}
 
 func eval(expression scmer, en *env) (value scmer) {
+	if Tracing {
+		print_indent()
+		fmt.Printf("=> Evaluate %s\n", String(expression))
+		indent()
+		defer func() {
+			undent()
+			print_indent()
+			fmt.Printf("<= %s\n", String(value))
+		}()
+	}
 	switch e := expression.(type) {
 	case number:
 		value = e
@@ -202,27 +229,4 @@ func String(v scmer) string {
 	default:
 		return fmt.Sprint(v)
 	}
-}
-
-func Repl(scanner *scan.Scanner) (err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			var ok bool
-			err, ok = r.(error)
-			if !ok {
-				err = fmt.Errorf("pkg: %v", r)
-			}
-		}
-	}()
-	for {
-		if expr, err := read(scanner); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %s", err)
-		} else if expr == symbol("#%EOF") {
-			break
-		} else {
-			fmt.Println("==>", String(eval(expr, &globalenv)))
-		}
-
-	}
-	return nil
 }

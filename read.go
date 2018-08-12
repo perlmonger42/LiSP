@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 
@@ -40,7 +41,7 @@ func read(scanner *scan.Scanner) (scmer, error) {
 				// 	return nil, fmt.Errorf("unterminated list: %s", list)
 			} else if tok.Type == scan.EOF {
 				list = append(list, symbol("#%EOF"))
-				return nil, fmt.Errorf("unterminated list: %s", list)
+				return list, fmt.Errorf("unterminated list: %s", list)
 			} else if item, err := read(scanner); err != nil {
 				return nil, err
 			} else {
@@ -74,9 +75,9 @@ func read(scanner *scan.Scanner) (scmer, error) {
 	case scan.Symbol:
 		return symbol(tok.Text), nil
 	case scan.EOF:
-		return symbol("#%EOF"), nil
+		return nil, io.EOF
 	default:
-		fmt.Fprintf(os.Stderr, "unexpected token: %s", tok)
+		fmt.Fprintf(os.Stderr, "unexpected token: %s\n", tok)
 		return symbol(tok.Text), nil
 		////return nil, fmt.Errorf("unexpected token: %s", tok)
 	}
