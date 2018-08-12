@@ -51,10 +51,16 @@ func eval(expression scmer, en *env) (value scmer) {
 		}()
 	}
 	switch e := expression.(type) {
-	case number:
+	case boolean:
+		value = e
+	case char:
+		value = e
+	case flonum:
+		value = e
+	case str:
 		value = e
 	case symbol:
-		value = en.Find(e).vars[e]
+		value = en.Lookup(e)
 	case []scmer:
 		switch car, _ := e[0].(symbol); car {
 		case "quote":
@@ -131,9 +137,19 @@ type env struct {
 func (e *env) Find(s symbol) *env {
 	if _, ok := e.vars[s]; ok {
 		return e
+	} else if e.outer == nil {
+		return nil
 	} else {
 		return e.outer.Find(s)
 	}
+}
+
+func (e *env) Lookup(s symbol) scmer {
+	r := e.Find(s)
+	if r == nil {
+		return symbol("#%undef")
+	}
+	return r.vars[s]
 }
 
 /*
@@ -152,35 +168,35 @@ func init() {
 	globalenv = env{
 		vars{ //aka an incomplete set of compiled-in functions
 			"+": func(a ...scmer) scmer {
-				v := a[0].(number)
+				v := a[0].(flonum)
 				for _, i := range a[1:] {
-					v += i.(number)
+					v += i.(flonum)
 				}
 				return v
 			},
 			"-": func(a ...scmer) scmer {
-				v := a[0].(number)
+				v := a[0].(flonum)
 				for _, i := range a[1:] {
-					v -= i.(number)
+					v -= i.(flonum)
 				}
 				return v
 			},
 			"*": func(a ...scmer) scmer {
-				v := a[0].(number)
+				v := a[0].(flonum)
 				for _, i := range a[1:] {
-					v *= i.(number)
+					v *= i.(flonum)
 				}
 				return v
 			},
 			"/": func(a ...scmer) scmer {
-				v := a[0].(number)
+				v := a[0].(flonum)
 				for _, i := range a[1:] {
-					v /= i.(number)
+					v /= i.(flonum)
 				}
 				return v
 			},
 			"<=": func(a ...scmer) scmer {
-				return a[0].(number) <= a[1].(number)
+				return a[0].(flonum) <= a[1].(flonum)
 			},
 			"equal?": func(a ...scmer) scmer {
 				return reflect.DeepEqual(a[0], a[1])
@@ -200,6 +216,7 @@ func init() {
 				return a[0].([]scmer)[1:]
 			},
 			"list": listPrimitive(),
+			"null": []scmer{},
 		},
 		nil}
 }
@@ -211,8 +228,11 @@ func init() {
 //symbols, numbers, expressions, procedures, lists, ... all implement this interface, which enables passing them along in the interpreter
 type scmer interface{}
 
-type symbol string  //symbols are represented by strings
-type number float64 //numbers by float64
+type symbol string  // symbols are represented by strings
+type flonum float64 // numbers by float64
+type char rune      // characters by rune
+type boolean bool   // booleans by bool
+type str string     // str by string
 
 /*
  Interactivity

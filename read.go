@@ -49,18 +49,15 @@ func read(scanner *scan.Scanner) (scmer, error) {
 			}
 		}
 		return list, nil
-	//// booleans are not yet implemented
-	// case scan.False:
-	// 	return expr.False, nil
-	// case scan.True:
-	// 	return expr.True, nil
-	//// chars are not yet implemented
-	// case scan.Char:
-	// 	r := scan.CharLiteralToRune(tok.Text)
-	// 	return expr.NewChar(r), nil
-	//// strings are not yet implemented
-	// case scan.String:
-	// 	return expr.NewString(tok.Text), nil
+	case scan.False:
+		return boolean(false), nil
+	case scan.True:
+		return boolean(true), nil
+	case scan.Char:
+		r := scan.CharLiteralToRune(tok.Text)
+		return char(r), nil
+	case scan.String:
+		return str(tok.Text), nil
 	//// fixnums are not yet implemented
 	// case scan.Fixnum:
 	// 	if integer, err := strconv.ParseInt(tok.Text, 10, 64); err == nil {
@@ -69,7 +66,7 @@ func read(scanner *scan.Scanner) (scmer, error) {
 	// 	return nil, fmt.Errorf("int too big: %s", tok.Text)
 	case scan.Flonum, scan.Fixnum:
 		if float, err := strconv.ParseFloat(tok.Text, 64); err == nil {
-			return number(float), nil
+			return flonum(float), nil
 		}
 		return nil, fmt.Errorf("invalid floating-point number: %s", tok.Text)
 	case scan.Symbol:
