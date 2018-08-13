@@ -122,7 +122,7 @@ func Rep(scanner *scan.Scanner, interactive bool) error {
 	if _, value, err := ReadEval(scanner); err != nil {
 		return err
 	} else {
-		fmt.Println(String(value))
+		fmt.Println(value)
 		return nil
 	}
 }

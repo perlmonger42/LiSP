@@ -17,9 +17,15 @@ func NewConsoleReader( /* config *config.T */ ) io.ByteReader {
 	return &gnuReadline{ /*////config,*/ "", 0}
 }
 
+var historyLoaded = false
+
 func (r *gnuReadline) ReadByte() (byte, error) {
 	var err error
 	for r.next >= len(r.line) {
+		if !historyLoaded {
+			readline.LoadHistory("./LiSP.history")
+			historyLoaded = true
+		}
 		//// prompt := r.config.Prompt
 		//// if prompt == "" {
 		//// 	prompt = "scm> "

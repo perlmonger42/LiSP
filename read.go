@@ -17,10 +17,10 @@ func read(scanner *scan.Scanner) (scmer, error) {
 		if item, err := read(scanner); err != nil {
 			return nil, err
 		} else {
-			return []scmer{symbol("quote"), item}, nil
+			return array{symbol("quote"), item}, nil
 		}
 	case scan.LeftParen:
-		var list []scmer
+		var list array
 		for {
 			tok = scanner.Peek()
 			if tok.Type == scan.RightParen {
