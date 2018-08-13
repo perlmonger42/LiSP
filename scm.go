@@ -10,7 +10,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"reflect"
 	"strings"
 	"unicode"
@@ -35,12 +34,24 @@ func isDefineForm(form scmer) bool {
 		return false
 	} else if len(list) < 3 {
 		return false
+	} else if sym, ok := list[0].(symbol); ok {
+		return sym == "define"
 	} else {
-		return list[0].(symbol) == "define"
+		return false
 	}
 }
 
-func define(list array, r *env) scmer {
+func define(list array, r *env) (result scmer) {
+	if Tracing {
+		print_indent()
+		fmt.Printf("=> Define %s\n", list)
+		indent()
+		defer func() {
+			undent()
+			print_indent()
+			fmt.Printf("<= %s\n", result)
+		}()
+	}
 	if len(list) != 3 {
 		Fail("define requires at exactly 3 arguments: %s", list)
 	}
@@ -114,49 +125,77 @@ func eval(expression scmer, en *env) (value scmer) {
 			value = define(e, en)
 		case "lambda":
 			value = proc{e[1], e[2], en}
+		case "apply":
+			functor := eval(e[1], en)
+			value = apply(functor, eval(e[2], en).(array))
 		case "begin":
 			for _, i := range e[1:] {
 				value = eval(i, en)
 			}
 		default:
-			operands := e[1:]
-			values := make(array, len(operands))
-			for i, x := range operands {
-				values[i] = eval(x, en)
-			}
-			value = apply(eval(e[0], en), values)
+			functor := eval(e[0], en)
+			value = apply(functor, eval_all(e[1:], en))
 		}
 	default:
-		log.Println("Unknown expression type - EVAL", e)
+		Fail("eval: unknown expression type: %T %e", expression, expression)
 	}
 	return
 }
 
+func eval_all(list []scmer, r *env) []scmer {
+	values := make(array, len(list))
+	for i, x := range list {
+		values[i] = eval(x, r)
+	}
+	return values
+}
+
 func apply(procedure scmer, args array) (value scmer) {
+	//if Tracing {
+	//	print_indent()
+	//	fmt.Printf("apply %s to %s\n", procedure, args)
+	//	indent()
+	//	defer func() {
+	//		undent()
+	//		print_indent()
+	//		fmt.Printf("return value from %s is %s\n", procedure, value)
+	//	}()
+	//}
 	switch p := procedure.(type) {
 	case primitive:
-		value = p(args...)
+		value = p.f(args...)
 	case proc:
 		en := &env{make(vars), p.en}
 		switch params := p.params.(type) {
 		case array:
 			for i, param := range params {
+				//if Tracing {
+				//	print_indent()
+				//	fmt.Printf("set %s to %s\n", param, args[i])
+				//}
 				en.vars[param.(symbol)] = args[i]
 			}
 		default:
+			//if Tracing {
+			//	print_indent()
+			//	fmt.Printf("set %s to %s\n", params, args)
+			//}
 			en.vars[params.(symbol)] = args
 		}
 		value = eval(p.body, en)
 	default:
-		log.Println("Unknown procedure type - APPLY", p)
+		Fail("apply: invalid functor: %T %s", procedure, procedure)
 	}
 	return
 }
 
-type primitive func(...scmer) scmer
+type primitive struct {
+	name symbol
+	f    func(...scmer) scmer
+}
 
 func (x primitive) String() string {
-	return fmt.Sprintf("<proc%p>", x)
+	return fmt.Sprintf("#<primitive:%s>", x.name)
 }
 
 type proc struct {
@@ -191,7 +230,7 @@ func (e *env) Find(s symbol) *env {
 func (e *env) Lookup(s symbol) scmer {
 	r := e.Find(s)
 	if r == nil {
-		return symbol("#%undef")
+		Fail("undefined symbol: %s", s)
 	}
 	return r.vars[s]
 }
@@ -273,7 +312,8 @@ func init() {
 	}
 	builtins := vars{}
 	for k, v := range std {
-		builtins[symbol(k)] = primitive(v)
+		sym := symbol(k)
+		builtins[sym] = primitive{sym, v}
 	}
 
 	builtins[symbol("list")] = listPrimitive()

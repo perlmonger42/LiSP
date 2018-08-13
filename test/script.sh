@@ -47,7 +47,6 @@ EXPECTED_OUTPUT
 diff ~/tmp/test-repl-expected.txt ~/tmp/test-repl-output.txt
 
 
-
 cat > ~/tmp/test-repl-expected-2.txt <<'EXPECTED_OUTPUT_TWO'
 => Define (define d (lambda (x) (* x 2)))
   => Evaluate (lambda (x) (* x 2))
@@ -71,8 +70,10 @@ cat > ~/tmp/test-repl-expected-2.txt <<'EXPECTED_OUTPUT_TWO'
 14
 EXPECTED_OUTPUT_TWO
 
-"$GOPATH"/bin/LiSP -trace -e '(define d (lambda (x) (* x 2))) (d 7)' > ~/tmp/test-repl-output-2.txt
-
+"$GOPATH"/bin/LiSP -trace -e '(define d (lambda (x) (* x 2))) (d 7)' \
+  | ack '<=|=>|^\S' \
+  > ~/tmp/test-repl-output-2.txt
+diff ~/tmp/test-repl-expected-2.txt ~/tmp/test-repl-output-2.txt
 
 
 echo All tests passed
