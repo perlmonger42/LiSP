@@ -21,8 +21,7 @@ cat > ~/tmp/test-repl-input.txt <<'INPUT-S-EXPRESSIONS'
 ((lambda (x) (cons x (cons (+ x 1) (cons (+ x 2) null)))) 17)
 (+ 1 2 4.5)
 (list 1 2 3.4 (quote (10 9 8)) #t #f (lambda (x) x))
-;(define (double x) (* x 2))
-(define double (lambda (x) (* x 2)))
+(define (double x) (* x 2))
 (double 7)
 (double 1.25)
 INPUT-S-EXPRESSIONS

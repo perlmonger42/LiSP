@@ -24,10 +24,44 @@ import (
 var Tracing bool
 
 func TopLevelEvaluate(e scmer) scmer {
-	//// if isDefineForm(e) {
-	//// 	return Define(e, &globalEnv)
-	//// }
+	if isDefineForm(e) {
+		return define(e.(array), &globalenv)
+	}
 	return eval(e, &globalenv)
+}
+
+func isDefineForm(form scmer) bool {
+	if list, ok := form.(array); !ok {
+		return false
+	} else if len(list) < 3 {
+		return false
+	} else {
+		return list[0].(symbol) == "define"
+	}
+}
+
+func define(list array, r *env) scmer {
+	if len(list) != 3 {
+		Fail("define requires at exactly 3 arguments: %s", list)
+	}
+	if sym, ok := list[1].(symbol); ok {
+		if len(list) != 3 {
+			Fail("define has trailing values: %s", list)
+		}
+		r.vars[sym] = eval(list[2], r)
+		return array{symbol("#%undef"), symbol("define"), sym}
+	}
+	if args, ok := list[1].(array); ok {
+		if sym, ok := args[0].(symbol); !ok {
+			Fail("define has illegal structure")
+		} else {
+			val := proc{args[1:], list[2], r}
+			r.vars[sym] = val
+			return array{symbol("#%undef"), symbol("define"), sym}
+		}
+	}
+	Fail("define: 1st arg must be symbol or func declaration: %s", list)
+	panic("Fail didn't panic")
 }
 
 var depth int
@@ -77,8 +111,7 @@ func eval(expression scmer, en *env) (value scmer) {
 			en.Find(v).vars[v] = eval(e[2], en)
 			value = symbol("#%set!")
 		case "define":
-			en.vars[e[1].(symbol)] = eval(e[2], en)
-			value = array{symbol("#%undef"), symbol("define"), e[1]}
+			value = define(e, en)
 		case "lambda":
 			value = proc{e[1], e[2], en}
 		case "begin":

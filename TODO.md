@@ -1,6 +1,7 @@
 To Do
 ========================================================================
 
+- [ ] Change environment representation from hash table to assoc list.
 - [ ] Find out which is faster: `sym, ok := expr.(*Symbol)` or `sym :=
   expr.AsSymbol()`.
 - [ ] Make the command-line flag -trace available to lisp code via a global
