@@ -29,7 +29,7 @@ const (
 	EOF   Type = iota // zero value so closed channel delivers EOF
 	Error             // error occurred; value is text of error
 
-	// Interesting things
+	// Scheme tokens
 	LeftParen       // '('
 	LeftBrack       // '['
 	LeftBrace       // '{'
@@ -40,6 +40,7 @@ const (
 	False           // "#f"
 	True            // "#t"
 	Dot             // "."
+	Ellipsis        // "..."
 	Fixnum          // a number with no fractional component
 	Flonum          // a number with a fractional component
 	String          // quoted string (includes quotes)
@@ -47,9 +48,9 @@ const (
 	RightParen      // ')'
 	RightBrack      // ']'
 	RightBrace      // '}'
-	CharLiteral     // '#\...'
+	CharLiteral     // '#\space', e.g.
 
-	// Ivy things
+	// Ivy tokens
 	Assign         // '='
 	Char           // printable ASCII character; grab bag for comma etc.
 	GreaterOrEqual // '>='
@@ -65,13 +66,13 @@ const (
 func (i Token) String() string {
 	switch {
 	case i.Type == EOF:
-		return "EOF"
+		return "<EOF>"
 	case i.Type == Error:
 		return "error: " + i.Text
 	case len(i.Text) > 10:
-		return fmt.Sprintf("%s: %.10q...", i.Type, i.Text)
+		return fmt.Sprintf("%#v: %.10q...", i.Type, i.Text)
 	}
-	return fmt.Sprintf("%s: %q", i.Type, i.Text)
+	return fmt.Sprintf("%#v: %q", i.Type, i.Text)
 }
 
 const eof = -1
@@ -291,7 +292,7 @@ func (l *Scanner) Next() (result Token) {
 		close(l.tokens)
 		l.tokens = nil
 	}
-	return Token{EOF, l.pos, "EOF"}
+	return Token{EOF, l.pos, "<EOF>"}
 }
 
 func (l *Scanner) Peek() (result Token) {
@@ -390,8 +391,11 @@ func lexAny(l *Scanner) stateFn {
 	case r == '"':
 		return lexString
 	case r == '.':
-		l.emit(Dot)
-		return lexAny
+		if l.isDelimiter(l.peek()) {
+			l.emit(Dot)
+			return lexAny
+		}
+		return lexSymbol
 	case r == ',':
 		if l.peek() == '@' {
 			l.next()
@@ -531,7 +535,8 @@ func lexBarSymbol(l *Scanner) stateFn {
 //    ( ) [ ] { } " , ' ` ; # | \
 func (l *Scanner) isDelimiter(r rune) bool {
 	return unicode.IsSpace(r) ||
-		strings.IndexRune("()[]{}\",'`;#|\\", r) >= 0
+		strings.IndexRune("()[]{}\",'`;#|\\", r) >= 0 ||
+		r == eof
 }
 
 // lexChar scans a character constant. The leading #\ is already
