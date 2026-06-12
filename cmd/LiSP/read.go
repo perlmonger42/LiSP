@@ -6,7 +6,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/perlmonger42/LiSP/scan"
+	"LiSP/internal/scan"
 )
 
 // Parser / Syntactic Analysis
@@ -48,7 +48,6 @@ func read(scanner *scan.Scanner) (scmer, error) {
 				list = append(list, item)
 			}
 		}
-		return list, nil
 	case scan.False:
 		return boolean(false), nil
 	case scan.True:
@@ -65,17 +64,22 @@ func read(scanner *scan.Scanner) (scmer, error) {
 	// 	}
 	// 	return nil, fmt.Errorf("int too big: %s", tok.Text)
 	case scan.Flonum, scan.Fixnum:
-		if float, err := strconv.ParseFloat(tok.Text, 64); err == nil {
-			return flonum(float), nil
+		float, err := strconv.ParseFloat(tok.Text, 64)
+		if err != nil {
+			panic(fmt.Sprintf("scanner emitted unparseable number %q: %v", tok.Text, err))
 		}
-		return nil, fmt.Errorf("invalid floating-point number: %s", tok.Text)
+		return flonum(float), nil
 	case scan.Symbol:
-		return symbol(tok.Text), nil
+		text := tok.Text
+		if len(text) >= 2 && text[0] == '|' && text[len(text)-1] == '|' {
+			text = text[1 : len(text)-1]
+		}
+		return symbol(text), nil
 	case scan.EOF:
 		return nil, io.EOF
 	default:
-		fmt.Fprintf(os.Stderr, "unexpected token: %s\n", tok)
-		return symbol(tok.Text), nil
-		////return nil, fmt.Errorf("unexpected token: %s", tok)
+		fmt.Fprintf(os.Stderr, "unexpected token on line %d: %s\n", tok.Line, tok)
+		////return symbol(tok.Text), nil
+		return nil, fmt.Errorf("unexpected token: %s", tok)
 	}
 }

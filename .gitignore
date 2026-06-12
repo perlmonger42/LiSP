@@ -1,0 +1,6 @@
+.coverage-data-files/
+.coverage-data.txt
+.idea/
+mcp-server.log
+LiSP
+LiSP.history

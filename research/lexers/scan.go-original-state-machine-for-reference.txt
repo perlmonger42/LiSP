@@ -190,14 +190,15 @@ func (l *Scanner) ignore() {
 	l.start = l.pos
 }
 
-// accept consumes the next rune if it's from the valid set.
-func (l *Scanner) accept(valid string) bool {
-	if strings.IndexRune(valid, l.next()) >= 0 {
-		return true
-	}
-	l.backup()
-	return false
-}
+/// UNUSED
+/// // accept consumes the next rune if it's from the valid set.
+/// func (l *Scanner) accept(valid string) bool {
+/// 	if strings.IndexRune(valid, l.next()) >= 0 {
+/// 		return true
+/// 	}
+/// 	l.backup()
+/// 	return false
+/// }
 
 // acceptRun consumes a run of runes from the valid set.
 func (l *Scanner) acceptRun(valid string) {
@@ -228,14 +229,15 @@ func (l *Scanner) acceptLimitedIsRun(isValid func(rune) bool, maxCount int64) {
 //
 // These are the Unicode line terminators, according to Wikipedia's [Newline
 // article](https://en.wikipedia.org/wiki/Newline#Unicode):
-//     LF:    Line Feed, U+000A
-//     VT:    Vertical Tab, U+000B
-//     FF:    Form Feed, U+000C
-//     CR:    Carriage Return, U+000D
-//     CR+LF: CR (U+000D) followed by LF (U+000A)
-//     NEL:   Next Line, U+0085
-//     LS:    Line Separator, U+2028
-//     PS:    Paragraph Separator, U+2029
+//
+//	LF:    Line Feed, U+000A
+//	VT:    Vertical Tab, U+000B
+//	FF:    Form Feed, U+000C
+//	CR:    Carriage Return, U+000D
+//	CR+LF: CR (U+000D) followed by LF (U+000A)
+//	NEL:   Next Line, U+0085
+//	LS:    Line Separator, U+2028
+//	PS:    Paragraph Separator, U+2029
 func (l *Scanner) isLineSeparator(r rune) bool {
 	if r == '\r' && l.peek() == '\n' {
 		l.next()
@@ -310,14 +312,15 @@ func (l *Scanner) Peek() (result Token) {
 // The `;` comment marker has been consumed.
 //
 // From https://docs.racket-lang.org/reference/reader.html#%28part._parse-comment%29:
-//   A ; starts a line comment. When the reader encounters ;, it skips past all
-//   characters until the next linefeed (ASCII 10), carriage return (ASCII 13),
-//   next-line (Unicode 133), line-separator (Unicode 8232), or
-//   paragraph-separator (Unicode 8233) character.
 //
-//   A #| starts a nestable block comment. When the reader encounters #|, it
-//   skips past all characters until a closing |#. Pairs of matching #| and |#
-//   can be nested.
+//	A ; starts a line comment. When the reader encounters ;, it skips past all
+//	characters until the next linefeed (ASCII 10), carriage return (ASCII 13),
+//	next-line (Unicode 133), line-separator (Unicode 8232), or
+//	paragraph-separator (Unicode 8233) character.
+//
+//	A #| starts a nestable block comment. When the reader encounters #|, it
+//	skips past all characters until a closing |#. Pairs of matching #| and |#
+//	can be nested.
 //
 // TODO: pass comments to parser?
 func lexLineComment(l *Scanner) stateFn {
@@ -466,22 +469,23 @@ func lexPoundSign(l *Scanner) stateFn {
 //
 // This uses the definition from Racket.
 // Quoting from https://docs.racket-lang.org/guide/symbols.html:
-//    For reader input, any character can appear directly in an identifier,
-//    except for whitespace and the following special characters:
 //
-//    ( ) [ ] { } " , ' ` ; # | \
+//	For reader input, any character can appear directly in an identifier,
+//	except for whitespace and the following special characters:
 //
-//    isDelimiter(r) returns true if r is whitespace or any of those special
-//    characters.
+//	( ) [ ] { } " , ' ` ; # | \
 //
-//    Actually, # is disallowed only at the beginning of a symbol, and then only
-//    if not followed by %; otherwise, # is allowed, too. Also, . by itself is
-//    not a symbol.
+//	isDelimiter(r) returns true if r is whitespace or any of those special
+//	characters.
 //
-//    Whitespace or special characters can be included in an identifier by
-//    quoting them with | or \. These quoting mechanisms are used in the printed
-//    form of identifiers that contain special characters or that might
-//    otherwise look like numbers.
+//	Actually, # is disallowed only at the beginning of a symbol, and then only
+//	if not followed by %; otherwise, # is allowed, too. Also, . by itself is
+//	not a symbol.
+//
+//	Whitespace or special characters can be included in an identifier by
+//	quoting them with | or \. These quoting mechanisms are used in the printed
+//	form of identifiers that contain special characters or that might
+//	otherwise look like numbers.
 func lexSymbol(l *Scanner) stateFn {
 	//	fmt.Printf("lexSymbol\n")//DEBUG
 Loop:
@@ -532,7 +536,8 @@ func lexBarSymbol(l *Scanner) stateFn {
 
 // isDelimiter reports whether the argument is a delimiter character.
 // Along with whitespace, the following characters are delimiters:
-//    ( ) [ ] { } " , ' ` ; # | \
+//
+//	( ) [ ] { } " , ' ` ; # | \
 func (l *Scanner) isDelimiter(r rune) bool {
 	return unicode.IsSpace(r) ||
 		strings.IndexRune("()[]{}\",'`;#|\\", r) >= 0 ||
@@ -544,11 +549,14 @@ func (l *Scanner) isDelimiter(r rune) bool {
 func lexChar(l *Scanner) stateFn {
 	//	fmt.Printf("lexChar\n")//DEBUG
 	switch r := l.next(); {
+	case r == 'o' && isOctDigit(l.peek()):
+		//fmt.Printf("octal character literal\n")
+		l.acceptIsRun(isOctDigit)
 	case r == 'u' && isHexDigit(l.peek()):
-		//fmt.Printf("4-digit unicode character\n")
+		//fmt.Printf("4-digit hexadecimal character\n")
 		l.acceptLimitedIsRun(isHexDigit, 4)
 	case r == 'U' && isHexDigit(l.peek()):
-		//fmt.Printf("6-digit unicode character\n")
+		//fmt.Printf("6-digit hexadecimal character\n")
 		l.acceptLimitedIsRun(isHexDigit, 6)
 	case unicode.IsLetter(r) && unicode.IsLetter(l.peek()):
 		//fmt.Printf("named character\n")
@@ -558,7 +566,7 @@ func lexChar(l *Scanner) stateFn {
 		}
 	case isOctDigit(r):
 		//fmt.Printf("octal character\n")
-		l.acceptIsRun(isOctDigit)
+		l.acceptRun("01234567")
 		// there must be exactly 1 or exactly 3 octal digits
 		runes := len([]rune(l.tokenText()))
 		if runes != 3 && runes != 5 {

@@ -2,6 +2,7 @@
 package main
 
 import (
+	"LiSP/internal/scan"
 	"bufio"
 	"flag"
 	"fmt"
@@ -10,12 +11,12 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/perlmonger42/LiSP/scan"
+	"github.com/bobappleyard/readline"
 )
 
 var (
-	execute = flag.Bool("e", false, "execute arguments as a single expression")
-	testing = flag.Bool("test", false, "execute Read Eval Read Compare Loop")
+	execute  = flag.Bool("e", false, "execute arguments as a single expression")
+	rercMode = flag.Bool("test", false, "execute Read Eval Read Compare Loop")
 	// format  = flag.String("format", "", "use `fmt` as format for printing numbers; empty sets default format")
 	// gformat = flag.Bool("g", false, `shorthand for -format="%.12g"`)
 	// maxbits   = flag.Uint("maxbits", 1e9, "maximum size of an integer, in bits; 0 means no limit")
@@ -40,45 +41,73 @@ func main() {
 	flag.Usage = usage
 	flag.Parse()
 
+	var ok bool
 	if *execute {
-		stringReader := strings.NewReader(strings.Join(flag.Args(), " "))
-		scanner := scan.NewScanner("<args>", stringReader)
-		Run(scanner, false)
-		return
+		ok = runExprsFromCommandline()
+	} else if flag.NArg() > 0 {
+		ok = runFilesFromCommandline()
+	} else {
+		reader, interactive := stdinReader()
+		scanner := scan.NewStreamScanner("<stdin>", reader)
+		ok = Run(scanner, interactive)
 	}
+	if !ok {
+		os.Exit(1)
+	}
+}
 
-	if flag.NArg() > 0 {
-		for i := 0; i < flag.NArg(); i++ {
-			name := flag.Arg(i)
-			var reader io.ByteReader
-			interactive := false
-			if name == "-" {
-				interactive = true
-				name = "<stdin>"
-				reader = scan.NewConsoleReader()
-			} else {
-				if f, err := os.Open(name); err != nil {
-					fmt.Fprintf(os.Stderr, "LiSP: %s\n", err)
-					os.Exit(1)
-				} else {
-					reader = bufio.NewReader(f)
-				}
-			}
-			scanner := scan.NewScanner(name, reader)
-			if ok := Run(scanner, interactive); !ok {
-				break
-			}
+// runExprsFromCommandline executes the text of the command-line arguments as a LiSP program.
+func runExprsFromCommandline() bool {
+	scanner := scan.NewScanner("<args>", strings.Join(flag.Args(), " "))
+	return Run(scanner, false)
+}
+
+// runFilesFromCommandline executes the contents of the files named by command-line arguments
+func runFilesFromCommandline() bool {
+	for i := 0; i < flag.NArg(); i++ {
+		name := flag.Arg(i)
+		var reader io.ByteReader
+		interactive := false
+		if name == "-" {
+			name = "<stdin>"
+			reader, interactive = stdinReader()
+		} else if f, err := os.Open(name); err != nil {
+			fmt.Fprintf(os.Stderr, "LiSP: %s\n", err)
+			return false
+		} else {
+			reader = bufio.NewReader(f)
 		}
-		return
+		scanner := scan.NewStreamScanner(name, reader)
+		if ok := Run(scanner, interactive); !ok {
+			return false
+		}
 	}
+	return true
+}
 
-	scanner := scan.NewScanner("<stdin>", scan.NewConsoleReader())
-	Run(scanner, true)
+// stdinReader returns a reader for os.Stdin and whether it is interactive.
+func stdinReader() (io.ByteReader, bool) {
+	return fileReader(os.Stdin)
+}
+
+// fileReader returns a reader for f and whether f is a character device
+// (i.e. a terminal). When interactive, it uses readline for line editing and
+// history; otherwise it reads f as a plain stream.
+func fileReader(f *os.File) (io.ByteReader, bool) {
+	fi, err := f.Stat()
+	if err == nil && (fi.Mode()&os.ModeCharDevice) != 0 {
+		return scan.NewConsoleReader(), true
+	}
+	return bufio.NewReader(f), false
 }
 
 func Run(scanner *scan.Scanner, interactive bool) bool {
+	readline.LoadHistory("./LiSP.history")
+	defer func() {
+		readline.SaveHistory("./LiSP.history")
+	}()
 	var err error
-	if *testing {
+	if *rercMode {
 		err = Rercl(scanner, interactive)
 	} else {
 		err = Repl(scanner, interactive)
@@ -87,13 +116,6 @@ func Run(scanner *scan.Scanner, interactive bool) bool {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 	}
 	return err == nil
-}
-
-// runArgs executes the text of the command-line arguments as a LiSP program.
-func runArgs() {
-	stringReader := strings.NewReader(strings.Join(flag.Args(), " "))
-	scanner := scan.NewScanner("<args>", stringReader)
-	Repl(scanner, false)
 }
 
 var Failure error
@@ -129,12 +151,17 @@ func Rep(scanner *scan.Scanner, interactive bool) error {
 
 // ReadEval does (eval (read)).
 // If err == io.EOF,
-//   then the end of input was reached, and datum and value are nil.
+//
+//	then the end of input was reached, and datum and value are nil.
+//
 // If datum == nil,
-//   then err is the read error; else datum is what was read and value is nil.
+//
+//	then err is the read error; else datum is what was read and value is nil.
+//
 // If value == nil,
-//   then err is the evaluation error; else datum is what was read and value
-//   is the result of evaluating datum.
+//
+//	then err is the evaluation error; else datum is what was read and value
+//	is the result of evaluating datum.
 func ReadEval(scanner *scan.Scanner) (datum scmer, value scmer, err error) {
 	defer func() {
 		if Failure != nil {
@@ -168,6 +195,8 @@ var expectError, dontCare symbol
 //
 // Special values for the second datum:
 //
+//	***  this means that an error is expected
+//	---  this means that no error is expected but the value is unimportant
 func Rercl(scanner *scan.Scanner, interactive bool) error {
 	expectError = symbol("***")
 	dontCare = symbol("---")
@@ -182,6 +211,9 @@ func Rercl(scanner *scan.Scanner, interactive bool) error {
 			failures += 1
 		}
 	}
+	if err == io.EOF {
+		return nil
+	}
 	return err
 }
 
@@ -191,9 +223,9 @@ func Rercl(scanner *scan.Scanner, interactive bool) error {
 // they are not equal.
 //
 // Special values for the second datum:
-//   ***  this means that an error is expected
-//   ---  this means that no error is expected but the value is unimportant
 //
+//	***  this means that an error is expected
+//	---  this means that no error is expected but the value is unimportant
 func Rerc(scanner *scan.Scanner) (failed bool, err error) {
 	var datum, value, expect scmer
 	var err2 error
@@ -202,6 +234,9 @@ func Rerc(scanner *scan.Scanner) (failed bool, err error) {
 		failed = true
 		fmt.Printf("%s\n   datum: %s\n   value: %s\n  expect: %s\n   error: %s\n",
 			why, datum, value, expect, err)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "   error: %v\n", err)
+		}
 	}
 
 	if datum, value, err = ReadEval(scanner); err == io.EOF {

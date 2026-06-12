@@ -2,8 +2,6 @@ To Do
 ========================================================================
 
 - [ ] Change environment representation from hash table to assoc list.
-- [ ] Find out which is faster: `sym, ok := expr.(*Symbol)` or `sym :=
-  expr.AsSymbol()`.
 - [ ] Make the command-line flag -trace available to lisp code via a global
   variable (e.g., #%trace).
 - [ ] Implement S-expression comments.
@@ -28,5 +26,30 @@ To Do
   eof, etc)
 - [ ] Fix symbol input (convert "x\ y" and "|x y|" into a symbol named "x y").
 - [ ] Fix symbol output (convert a symbol named "x y" into "|x y|" on output)
-- [X] Replace the simplistic lexer with a real one.
 - [ ] Implement equal? that handles cyclic data structures.
+
+
+Done
+========================================================================
+
+- [X] Replace the simplistic lexer with a real one.
+
+
+Type Assertion vs. Helper Method
+------------------------------------------------------------------------
+- [x] Find out which is faster: `sym, ok := expr.(*Symbol)` or `sym :=
+  expr.AsSymbol()`.
+
+Answer: The type assertion is about twice as fast as the `AsSymbol()` helper
+method.  The benchmark is in `./bench/expr_bench_test.go`. Here's a sample run:
+```
+❯ ./BENCH.zsh
+goos: darwin
+goarch: arm64
+pkg: LiSP/bench
+cpu: Apple M4 Max
+BenchmarkTypeAssertion-16    	1000000000	         0.6645 ns/op	       0 B/op	       0 allocs/op
+BenchmarkMethodCall-16       	877630834	         1.454 ns/op	       0 B/op	       0 allocs/op
+PASS
+ok  	LiSP/bench	2.397s
+```
