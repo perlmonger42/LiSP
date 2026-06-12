@@ -15,9 +15,10 @@ fi
 
 PROJECT=${GOMOD:h}  # the root of the Go project (dir containing `go.mod`)
 cd "${PROJECT}"
-
 export CGO_CFLAGS="-I$( brew --prefix readline)/include"
 export CGO_LDFLAGS="-L$(brew --prefix readline)/lib"
+
+# go clean -cache -testcache
 go build -o ./LiSP ./cmd/LiSP || (echo go build failed && false)
 go test ./cmd/LiSP/... ./internal/... || (echo go test failed && false)
 test/script.sh || (echo test script failed && false)

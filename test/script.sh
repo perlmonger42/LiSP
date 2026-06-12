@@ -405,8 +405,8 @@ if [[ "$got" != '"hello"(|#%undef| write)' ]]; then
   exit 1
 fi
 
-got=$($LiSP -e '(list 7' 2>&1)
-if [[ "$got" != *unterminated list* ]]; then
+got=$($LiSP -e '(list 7' 2>&1) || true
+if [[ "$got" != *unterminated\ list* ]]; then
   echo "FAILED: unterminated list test: got '$got', expected '*unterminated list*'"
   exit 1
 fi
