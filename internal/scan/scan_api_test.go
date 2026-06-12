@@ -104,10 +104,10 @@ func TestCharLiteralToRune(t *testing.T) {
 		{`#\return`, '\r'},
 		{`#\rubout`, '\177'},
 		// Hex Unicode (lowercase u)
-		{`#\u0041`, 'A'},
-		{`#\u22EE`, '⋮'}, // VERTICAL ELLIPSIS ⋮
+		{`#\x0041`, 'A'},
+		{`#\x22EE`, '⋮'}, // VERTICAL ELLIPSIS ⋮
 		// Hex Unicode (uppercase U)
-		{`#\U1F61E`, '\U0001F61E'}, // DISAPPOINTED FACE 😞
+		{`#\X1F61E`, '\U0001F61E'}, // DISAPPOINTED FACE 😞
 		// Single character (ASCII)
 		{`#\a`, 'a'},
 		{`#\Z`, 'Z'},

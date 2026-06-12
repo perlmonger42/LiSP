@@ -23,27 +23,17 @@ func _() {
 	_ = x[Ellipsis-12]
 	_ = x[Fixnum-13]
 	_ = x[Flonum-14]
-	_ = x[String-15]
+	_ = x[Char-15]
 	_ = x[Symbol-16]
-	_ = x[RightParen-17]
-	_ = x[RightBrack-18]
-	_ = x[RightBrace-19]
-	_ = x[CharLiteral-20]
-	_ = x[Assign-21]
-	_ = x[Char-22]
-	_ = x[GreaterOrEqual-23]
-	_ = x[Identifier-24]
-	_ = x[Number-25]
-	_ = x[Operator-26]
-	_ = x[Op-27]
-	_ = x[Rational-28]
-	_ = x[Semicolon-29]
-	_ = x[Space-30]
+	_ = x[String-17]
+	_ = x[RightParen-18]
+	_ = x[RightBrack-19]
+	_ = x[RightBrace-20]
 }
 
-const _Type_name = "EOFErrorLeftParenLeftBrackLeftBraceQuoteQuasiQuoteUnquoteUnquoteSplicingFalseTrueDotEllipsisFixnumFlonumStringSymbolRightParenRightBrackRightBraceCharLiteralAssignCharGreaterOrEqualIdentifierNumberOperatorOpRationalSemicolonSpace"
+const _Type_name = "EOFErrorLeftParenLeftBrackLeftBraceQuoteQuasiQuoteUnquoteUnquoteSplicingFalseTrueDotEllipsisFixnumFlonumCharSymbolStringRightParenRightBrackRightBrace"
 
-var _Type_index = [...]uint8{0, 3, 8, 17, 26, 35, 40, 50, 57, 72, 77, 81, 84, 92, 98, 104, 110, 116, 126, 136, 146, 157, 163, 167, 181, 191, 197, 205, 207, 215, 224, 229}
+var _Type_index = [...]uint8{0, 3, 8, 17, 26, 35, 40, 50, 57, 72, 77, 81, 84, 92, 98, 104, 108, 114, 120, 130, 140, 150}
 
 func (i Type) String() string {
 	if i < 0 || i >= Type(len(_Type_index)-1) {

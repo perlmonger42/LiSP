@@ -741,10 +741,8 @@ func (x char) String() string {
 			return fmt.Sprintf("#\\nul#|0x%x|#", c)
 		} else if !unicode.IsSpace(rune(c)) && unicode.IsGraphic(rune(c)) {
 			return fmt.Sprintf("#\\%c", c)
-		} else if c < 0x10000 {
-			return fmt.Sprintf("#\\u%04x", c)
 		} else {
-			return fmt.Sprintf("#\\U%06x", c)
+			return fmt.Sprintf("#\\x%x", c)
 		}
 	}
 }

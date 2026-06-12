@@ -1,6 +1,6 @@
 #t ; this is a line comment
 #f #| this is a #|nested|# block comment |#
-(list #\a #\z #\space #\ﬃ  #\uFB01 #\😀 #\U1F61E)
+(list #\a #\z #\space #\ﬃ  #\xFB01 #\😀 #\X1F61E)
 ; LATIN SMALL LIGATURE FII, LATIN SMALL LIGATURE FI, GRINNING FACE, DISAPPOINTED FACE
 42
 3.14159265

@@ -102,14 +102,14 @@ var testcases []testcase = []testcase{
 		},
 	},
 	{
-		input: `#\space  #\o77#\u#\U#\u22EE#\U1D417`,
+		input: `#\space  #\o77#\x#\X#\x22EE#\x1D417`,
 		output: []wanted{
 			{Char, `#\space`},  // "space" named character
 			{Char, `#\o77`},    // "M"  (U+004D) LATIN CAPITAL LETTER M
-			{Char, `#\u`},      // "u"  (U+0075) LATIN SMALL LETTER U
-			{Char, `#\U`},      // "U"  (U+0055) LATIN CAPITAL LETTER U
-			{Char, `#\u22EE`},  // "⋮"  (U+22EE) VERTICAL ELLIPSIS
-			{Char, `#\U1D417`}, // "𝐗"  (U+1D417) MATHEMATICAL BOLD CAPITAL X
+			{Char, `#\x`},      // "x"  (U+0075) LATIN SMALL LETTER X
+			{Char, `#\X`},      // "X"  (U+0055) LATIN CAPITAL LETTER X
+			{Char, `#\x22EE`},  // "⋮"  (U+22EE) VERTICAL ELLIPSIS
+			{Char, `#\x1D417`}, // "𝐗"  (U+1D417) MATHEMATICAL BOLD CAPITAL X
 			{EOF, "<EOF>"},
 		},
 	},
