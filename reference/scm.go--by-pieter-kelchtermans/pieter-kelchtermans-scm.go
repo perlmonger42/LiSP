@@ -1,4 +1,5 @@
 /* vim: set filetype=go: */
+/*
  * A minimal Scheme interpreter, as seen in lis.py and SICP
  * http://norvig.com/lispy.html
  * http://mitpress.mit.edu/sicp/full-text/sicp/book/node77.html
