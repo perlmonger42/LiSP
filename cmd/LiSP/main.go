@@ -232,8 +232,8 @@ func Rerc(scanner *scan.Scanner) (failed bool, err error) {
 
 	fail := func(why string) {
 		failed = true
-		fmt.Printf("%s\n   datum: %s\n   value: %s\n  expect: %s\n   error: %s\n",
-			why, datum, value, expect, err)
+		fmt.Printf("%s\n   input: %s\n  evaled: %s\n  expect: %s\n",
+			why, datum, value, expect)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "   error: %v\n", err)
 		}
