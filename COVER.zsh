@@ -24,6 +24,7 @@ export GOCOVERDIR=.coverage-data-files
 rm -rf $GOCOVERDIR && mkdir $GOCOVERDIR
 
 # Build a coverage-instrumented binary for integration tests
+go generate internal/scan/scan.go
 go build -cover -o ./LiSP ./cmd/LiSP || (echo go build failed && false)
 go test -cover ./cmd/LiSP/... ./internal/... || (echo go test failed && false)
 
