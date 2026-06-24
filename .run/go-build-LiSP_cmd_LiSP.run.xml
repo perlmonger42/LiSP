@@ -1,0 +1,15 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="go-build-LiSP/cmd/LiSP" type="GoApplicationRunConfiguration" factoryName="Go Application">
+    <module name="LiSP" />
+    <working_directory value="$PROJECT_DIR$" />
+    <envs>
+      <env name="CGO_CFLAGS" value="-I/opt/homebrew/opt/readline/include -O0 -g" />
+      <env name="CGO_LDFLAGS" value="-I/opt/homebrew/opt/readline/lib" />
+    </envs>
+    <kind value="PACKAGE" />
+    <package value="LiSP/cmd/LiSP" />
+    <directory value="$PROJECT_DIR$" />
+    <filePath value="$PROJECT_DIR$" />
+    <method v="2" />
+  </configuration>
+</component>

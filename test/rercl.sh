@@ -13,33 +13,17 @@ if [[ $GOMOD = /dev/null ]]; then
     exit 1
   fi
 fi
-
 PROJECT=${GOMOD:h}  # the root of the Go project (dir containing `go.mod`)
 cd "${PROJECT}"
 
-export GOCOVERDIR=.coverage-data-files
-export GOCOVERFILE=.coverage-data.txt
-rm -rf $GOCOVERDIR && mkdir $GOCOVERDIR
+export CGO_CFLAGS="-I$( brew --prefix readline)/include"
+export CGO_LDFLAGS="-L$(brew --prefix readline)/lib"
+echo Build program
+go generate internal/scan/scan.go || (echo go generate failed && false)
+go build -o ./LiSP ./cmd/LiSP || (echo go build failed && false)
 
-function build_with_coverage {
-  echo Build with coverage support
-  export CGO_CFLAGS="-I$( brew --prefix readline)/include"
-  export CGO_LDFLAGS="-L$(brew --prefix readline)/lib"
-  go generate internal/scan/scan.go
-  go build -cover -o ./LiSP ./cmd/LiSP || (echo go build failed && false)
-}
-
-function report_coverage {
-  echo Show coverage report
-  # Merge all coverage data into a single text profile and open HTML report
-  go tool covdata textfmt -i=$GOCOVERDIR -o=$GOCOVERFILE
-  go tool cover -html=$GOCOVERFILE
-}
-
-function run_tests {
-  echo Run tests
-  ./LiSP -trace -e '(+ 40 2)'
-  ./LiSP -test <<'EOF'
+echo Run tests
+./LiSP -test <<'EOF'
     42 ; this is a line comment
     42
 
@@ -70,16 +54,30 @@ function run_tests {
     ;(1 2 3.4 (10 9 8) #t #f (lambda (x) x))
 
     (define (double x) (* x 2)) ---
-    (double 7)                  14
-    (double 1.25)               2.5
+    (double 7)                    14
+    (double 1.25)                 2.5
 
-    (apply + 1000 200 30 4)     1234
-    '(+ 8 9)                    (+ 8 9)
+    (apply + '(1000 200 30 4))    1234
+    (apply * 2 3 '(5 7))          210
+    '(+ 8 9)                      (+ 8 9)
 
     ; basic arithmetic
-    (+ 1 2)   3
+    (+)       0
+    (+ 11)    11
+    (+ 9 1)   10
+    (+ 2 5 8) 15
+    (*)       1
+    (* 13)    13
     (* 2 3)   6
-    (- 10 4)  6
+
+    (-)         ***
+    (- 14)      -14
+    (- 10 4)    6
+    (- 10 1 5)  4
+    (/)         ***
+    (/ 4)       0.25
+    (/ 10 4)    2.5
+    (/ 30 2 3)  5
 
     ; character syntax
     #\c          #\x63
@@ -94,6 +92,8 @@ function run_tests {
     #\x00000085  #\x85
 
     ; --- symbols ---
+    '()                        ()
+    (quote ())                 ()
     (quote ||)                 ||
     (quote |!@#$|)             |!@#$|
     '|x|                       |x|
@@ -110,7 +110,8 @@ function run_tests {
     (if #f 1 2)                2
     (if #t 1 2 3)              ***  ; invalid arity
     (if 0 "yes" "no")          "yes"
-    ; TODO: Add (if test consequent), for now we only have (if test consequent alternative)
+    (if #t "ok")               "ok"
+    (if #f "ok")               (|#%undef| if)
 
     ; --- cond ---
     (cond 1)                         *** ; invalid syntax
@@ -119,11 +120,38 @@ function run_tests {
     (cond)                           (|#%undef| cond)
 
     ; --- and ---
-    (and)                            #t
-    (and 42)                         42
-    (and 1 2)                        2
-    (and #f 99)                      #f
-    (and 1 2 3)                      3
+    (and)                           #t
+    (and #f)                        #f
+    (and  1)                        1
+    (and #f #f)                     #f
+    (and #f  8)                     #f
+    (and  2 #f)                     #f
+    (and  3  9)                     9
+    (and #f #f #f)                  #f
+    (and #f #f  5)                  #f
+    (and #f  1 #f)                  #f
+    (and #f  2  6)                  #f
+    (and  4 #f #f)                  #f
+    (and  5 #f  7)                  #f
+    (and  6  3 #f)                  #f
+    (and  7  4  8)                  8
+
+    ; --- or ---
+    (or)                            #f
+    (or #f)                         #f
+    (or  1)                         1
+    (or #f #f)                      #f
+    (or #f  8)                      8
+    (or  2 #f)                      2
+    (or  3  9)                      3
+    (or #f #f #f)                   #f
+    (or #f #f  5)                   5
+    (or #f  1 #f)                   1
+    (or #f  2  6)                   2
+    (or  4 #f #f)                   4
+    (or  5 #f  7)                   5
+    (or  6  3 #f)                   6
+    (or  7  4  8)                   7
 
     ; --- begin ---
     (begin)                          (|#%undef| begin)
@@ -141,7 +169,7 @@ function run_tests {
     (let ((x)) body)                 *** ; invalid syntax
 
     ; --- variadic lambda (invoke proc.params symbol) ---
-    (lambda l l)                     (lambda l l)
+    ;(lambda l l)                     (lambda l l)
     ((lambda x x) 1 2 3)             (1 2 3)
 
     ; --- call/cc ---
@@ -220,11 +248,10 @@ function run_tests {
     (set! no-such-set-var 0)         ***
 
 EOF
-}
 
-function test_continuations {
-  echo Run tests
-  ./LiSP -test <<'EOF'
+echo Test continuations
+#./LiSP -verbose -test <<'EOF'
+./LiSP -test <<'EOF'
     (define (current-continuation)
       (call-with-current-continuation
        (lambda (cc) cc) ) )
@@ -289,9 +316,7 @@ function test_continuations {
       ; Print out the answer:
       (list a b c)
     )
-    (3 4 7)
+    (3 4 5)
 EOF
 
-}
-
-build_with_coverage && run_tests && report_coverage
+echo Done

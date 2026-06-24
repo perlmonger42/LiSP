@@ -47,7 +47,7 @@ cat > ${TMPDIR}/test-repl-input.txt <<'INPUT-S-EXPRESSIONS'
 (define (double x) (* x 2))
 (double 7)
 (double 1.25)
-(apply + 1000 200 30 4)
+(apply + 1000 200 '(30 4))
 '(+ 8 9)
 INPUT-S-EXPRESSIONS
 
@@ -340,8 +340,10 @@ set-x                            77
 (error "oops")                   ***
 (error "a" "b")                  ***
 
-; --- if arity errors (both branches of expect) ---
-(if #t 1)                        ***
+; --- if with no alternative ---
+(if #t 1)                        1
+(if #f 1)                        (|#%undef| if)
+; --- if arity error (too many args) ---
 (if #t 1 2 3)                    ***
 
 ; --- invalid define forms ---

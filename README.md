@@ -28,7 +28,7 @@ hardcodes a path that isn't present on MacOS.
 
 # Build and Run
 
-`./TEST.zsh` will build the executable and run a few tests.
+`./RUN.zsh` will build the executable and run a few tests.
 
 Then you can run `./LiSP` to get a REPL.
 

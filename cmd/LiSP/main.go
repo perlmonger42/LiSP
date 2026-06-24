@@ -17,6 +17,7 @@ import (
 var (
 	execute  = flag.Bool("e", false, "execute arguments as a single expression")
 	rercMode = flag.Bool("test", false, "execute Read Eval Read Compare Loop")
+	verbose  = flag.Bool("verbose", false, "print each expression as it is read")
 	// format  = flag.String("format", "", "use `fmt` as format for printing numbers; empty sets default format")
 	// gformat = flag.Bool("g", false, `shorthand for -format="%.12g"`)
 	// maxbits   = flag.Uint("maxbits", 1e9, "maximum size of an integer, in bits; 0 means no limit")
@@ -118,13 +119,6 @@ func Run(scanner *scan.Scanner, interactive bool) bool {
 	return err == nil
 }
 
-var Failure error
-
-func Fail(format string, a ...interface{}) {
-	Failure = fmt.Errorf(format, a...)
-	panic(Failure)
-}
-
 // Repl is a Read, Eval, Print Loop.
 func Repl(scanner *scan.Scanner, interactive bool) (err error) {
 	for {
@@ -149,39 +143,32 @@ func Rep(scanner *scan.Scanner, interactive bool) error {
 	}
 }
 
+// If datum != nil and value != nil,
+//   - then datum was read and value is the result of evaluating datum.
+//
+// readVerbose reads one datum and, if -verbose is set, prints it to stderr.
+func readVerbose(label string, scanner *scan.Scanner) (scmer, error) {
+	datum, err := read(scanner)
+	if err == nil && *verbose {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", label, datum)
+	}
+	return datum, err
+}
+
 // ReadEval does (eval (read)).
 // If err == io.EOF,
+//   - then the end of input was reached, and datum and value are nil.
 //
-//	then the end of input was reached, and datum and value are nil.
+// Otherwise...
 //
 // If datum == nil,
+//   - then value is nil and err is the read error.
 //
-//	then err is the read error; else datum is what was read and value is nil.
-//
-// If value == nil,
-//
-//	then err is the evaluation error; else datum is what was read and value
-//	is the result of evaluating datum.
+// If datum != nil and value == nil,
+//   - then datum was read and err is the evaluation error.
 func ReadEval(scanner *scan.Scanner) (datum scmer, value scmer, err error) {
-	defer func() {
-		if Failure != nil {
-			r := recover()
-			if r == nil {
-				err = Failure
-			} else if e, ok := r.(error); ok && e == Failure {
-				err = Failure
-			} else {
-				fmt.Printf("Error: %s\n", Failure)
-				panic(r)
-			}
-		}
-	}()
-
-	Failure = nil
-	if datum, err = read(scanner); err != nil {
-		// Read error, so skip evaluation (includes err == io.EOF)
-	} else if value = TopLevelEvaluate(datum); value == nil {
-		err = fmt.Errorf("Evaluate failed (returned nil)")
+	if datum, err = readVerbose(" input", scanner); err == nil {
+		value, err = topLevelEvaluate(datum)
 	}
 	return
 }
@@ -230,28 +217,32 @@ func Rerc(scanner *scan.Scanner) (failed bool, err error) {
 	var datum, value, expect scmer
 	var err2 error
 
-	fail := func(why string) {
+	fail := func(format string, a ...interface{}) {
 		failed = true
+		why := fmt.Sprintf(format, a...)
 		fmt.Printf("%s\n   input: %s\n  evaled: %s\n  expect: %s\n",
-			why, datum, value, expect)
+			why, neverNil(datum), neverNil(value), expect)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "   error: %v\n", err)
+			if _, e := fmt.Fprintf(os.Stderr, "   error: %v\n", err); e != nil {
+				panic(err)
+			}
+			err = nil
 		}
 	}
 
 	if datum, value, err = ReadEval(scanner); err == io.EOF {
-		// end of input; do nothing
+		return // end of input; do nothing more
 	} else if datum == nil {
-		// read error; do nothing more
-	} else if expect, err2 = read(scanner); err2 != nil {
+		return // read error; do nothing more
+	} else if expect, err2 = readVerbose("expect", scanner); err2 != nil {
 		err = fmt.Errorf("RERC: failed while reading expected value: %s", err2)
 	} else if expect == dontCare {
 		if err != nil {
-			fail("unexpected error during evaluation")
+			fail("unexpected error during evaluation of %s", datum)
 		}
 	} else if expect == expectError {
 		if err == nil {
-			fail("expected error, but none occurred")
+			fail("expected error, but none occurred during evaluation of %s", datum)
 		}
 		err = nil
 	} else if err != nil {
@@ -260,4 +251,11 @@ func Rerc(scanner *scan.Scanner) (failed bool, err error) {
 		fail("unexpected value")
 	}
 	return
+}
+
+func neverNil(x scmer) scmer {
+	if x == nil {
+		return symbol("#%undef")
+	}
+	return x
 }

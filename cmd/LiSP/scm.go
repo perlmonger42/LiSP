@@ -17,6 +17,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"reflect"
 	"strings"
 	"unicode"
@@ -26,18 +27,19 @@ import (
 
 var depth int
 
-func current_indentation() int { return depth }
-func set_indent_level(n int)   { depth = n }
-func indent()                  { depth += 1 }
-func undent()                  { depth -= 1 }
-func print_indent() {
+func currentIndentation() int { return depth }
+func setIndentLevel(n int)    { depth = n }
+func indent()                 { depth += 1 }
+func undent()                 { depth -= 1 }
+func printIndent() {
 	for i := 0; i < depth; i += 1 {
 		fmt.Print("  ")
 	}
 }
 
+// continuation is the interface implemented by all continuations.
+// To get the name of the continuation k, use reflect.TypeOf(k).Name().
 type continuation interface {
-	String() string
 	resume(scmer) (c continuation, v scmer)
 }
 
@@ -47,31 +49,40 @@ type bottomCont struct {
 func (bottomCont) resume(e scmer) (continuation, scmer) {
 	return nil, e
 }
-func (bottomCont) String() string { return "<bottomCont>" }
 
 /*
 Eval / Apply
 */
 var Tracing bool
 
-////func TopLevelEvaluate(e scmer) scmer {
-////	//// if isDefineForm(e) {
-////	//// 	return define(e.(array), &globalenv)
-////	//// }
-////	_, v := evaluate(e, &globalenv, bottomCont{})
-////	return v
-////}
+type FailMessage struct{ msg string }
 
-func TopLevelEvaluate(e scmer) scmer {
-	return top_level_evaluator(e)
+func Fail(format string, a ...interface{}) {
+	panic(FailMessage{fmt.Sprintf(format, a...)})
 }
 
-func top_level_evaluator(e scmer) scmer {
+func topLevelEvaluate(e scmer) (result scmer, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			// panic() was called
+			if f, ok := r.(FailMessage); ok {
+				err = fmt.Errorf("%s", f.msg) // panic was from Fail(), so return its payload as err.
+			} else {
+				fmt.Printf("topLevelEvaluate: %v (%T)\n", r, r)
+				panic(r) // re-panic if it wasn't Fail() that called panic
+			}
+		}
+	}()
+
+	return topLevelEvaluator(e), nil
+}
+
+func topLevelEvaluator(e scmer) scmer {
 	// hop on the trampoline
 	cont, value := evaluate(e, &globalenv, bottomCont{})
 	// continue jumping on the trampoline
 	for cont != nil {
-		//print_indent()
+		//printIndent()
 		//fmt.Printf("%s => %s\n", value, cont)
 		cont, value = cont.resume(value)
 	}
@@ -83,67 +94,33 @@ type traceCont struct {
 	k           continuation
 }
 
-func (traceCont) String() string { return "<traceCont>" }
-
 func (c traceCont) resume(value scmer) (continuation, scmer) {
-	set_indent_level(c.indentation)
-	set_indent_level(c.indentation)
-	print_indent()
+	setIndentLevel(c.indentation)
+	printIndent()
 	fmt.Printf("<= %s\n", value)
 	return c.k, value
 }
 
 func evaluate(expression scmer, r *env, k continuation) (cont continuation, value scmer) {
 	if Tracing {
-		print_indent()
+		printIndent()
 		fmt.Printf("=> Evaluate %s\n", expression)
-		k = &traceCont{current_indentation(), k}
+		k = &traceCont{currentIndentation(), k}
 		indent()
 	}
 	if expression == nil {
 		return k, nil
 	}
 	switch e := expression.(type) {
-	case boolean, char, flonum, str:
+	case boolean, char, flonum, str: // 4.1.2 "Literal Expressions"
+		// > Numerical constants, string constants, character constants,
+		// > and boolean constants evaluate “to themselves”; they need
+		// > not be quoted.
 		return k, e
-	case symbol:
+	case symbol: // R5RS 4.1.1 "Variable references"
 		return evaluateVariable(e, r, k)
-	case array:
-		if len(e) == 0 {
-			Fail("missing functor in '()")
-		}
-		switch car, _ := e[0].(symbol); car {
-		case "quote":
-			return evaluateQuote(e, r, k)
-		case "if":
-			return evaluateIf(e, r, k)
-		case "and":
-			return evaluateAnd(e[1:], r, k)
-		case "set!":
-			return evaluateSetVariable(e[1], e[2], r, k)
-		case "define":
-			if len(e) < 3 {
-				Fail("invalid (define ...) form: %s", e)
-			} else if sym, val, ok := isVarDef(e); ok {
-				return evaluate(val, r, varDefCont{sym, r, k})
-			} else if sym, args, body, ok := isFunDef(e); ok {
-				r.Define(sym, proc{args, body, r})
-				return k, list(symbol("#%undef"), symbol("define"), sym)
-			}
-			Fail("invalid define form")
-		case "lambda":
-			return evaluateLambda(e[1], e[2:], r, k)
-		case "apply":
-			return evaluateApplication(e[1], e[2:], r, k)
-		case "begin":
-			return evaluateBegin(e[1:], r, k)
-		case "let":
-			return evaluateLet(e[1], e[2:], r, k)
-		case "cond":
-			return evaluateCond(e[1:], r, k)
-		default:
-			return evaluateApplication(e[0], e[1:], r, k)
-		}
+	case array: // R5RS 4.1.3 "Procedure calls"
+		return evaluateProcedureCallSyntax(e, r, k)
 	default:
 		Fail("evaluate: unknown expression type: %T %e", expression, expression)
 	}
@@ -154,12 +131,102 @@ func evaluateVariable(e scmer, r *env, k continuation) (continuation, scmer) {
 	return lookup(e, r, k)
 }
 
-func evaluateSetVariable(sym, value scmer, r *env, k continuation) (continuation, scmer) {
-	s, ok := sym.(symbol)
-	if !ok {
-		Fail("set!: first argument must be a symbol")
+func evaluateProcedureCallSyntax(e array, r *env, k continuation) (continuation, scmer) {
+	if len(e) == 0 {
+		Fail("missing functor in expression: ()")
+		panic("unreachable")
 	}
-	return evaluate(value, r, varSetCont{s, r, k})
+	switch car, _ := e[0].(symbol); car {
+	case "#%undef": // invented for this interpreter
+		return k, e // (#%undef obj...) evaluates to itself -- the arguments are not evaluated
+	case "quote": // R5RS 4.1.2 "Literal Expressions"
+		return evaluateQuoteSyntax(e, r, k)
+	case "lambda": // R5RS 4.1.4 "Procedures"
+		return evaluateLambdaSyntax(e, r, k)
+	case "if": // R5RS 4.1.5 "Conditionals"
+		return evaluateIfSyntax(e, r, k)
+	case "set!": // R5RS 4.1.6 "Assignments"
+		return evaluateSetVariableSyntax(e, r, k)
+	case "cond": // R5RS 4.2.1 "Conditionals"
+		return evaluateCondSyntax(e, r, k)
+	// case "case": // R5RS 4.2.1 "Conditionals" -- not yet implemented
+	case "and": // R5RS 4.2.1 "Conditionals"
+		return evaluateAndSyntax(e, r, k)
+	case "or": // R5RS 4.2.1 "Conditionals"
+		return evaluateOrSyntax(e, r, k)
+	case "let": // R5RS 4.2.2 "Binding constructs"
+		return evaluateLetSyntax(e, r, k)
+	//case "let*": // R5RS 4.2.2 "Binding constructs" --not yet implemented
+	//case "letrec": // R5RS 4.2.2 "Binding constructs" --not yet implemented
+	case "begin": // R5RS 4.2.3 "Sequencing"
+		return evaluateBeginSyntax(e[1:], r, k)
+	//case "do": // R5RS 4.2.4 "Iteration" -- not yet implemented
+	//case "delay": // R5RS 4.2.5 "Delayed evaluation" -- not yet implemented
+	//case "quasiquote": // R5RS 4.2.6 "Quasiquotation" not yet implemented
+	//case "unquote": // R5RS 4.2.6 "Quasiquotation" not yet implemented
+	//case "unquote-splicing": // R5RS 4.2.6 "Quasiquotation" not yet implemented
+	// 4.3 Macros -- not yet implemented
+	case "define": // R5RS 5.2 Definitions
+		return evaluateDefineSyntax(e, r, k)
+	default: // R5RS 4.1.3 "Procedure calls"
+		return evaluateNormalProcedureCall(e, r, k)
+	}
+}
+
+func evaluateQuoteSyntax(form array, r *env, k continuation) (continuation, scmer) {
+	expectArgs("quote", form[1:], 1, 1)
+	return k, form[1]
+}
+
+func evaluateLambdaSyntax(form array, r *env, k continuation) (continuation, scmer) {
+	// Precondition: form[0] is |lambda|
+	// Match: (lambda <formals> <body1> <body2> ...)
+	if len(form) < 3 {
+		Fail("invalid (lambda ...) syntax: %s", form)
+	}
+	// TODO: validate the shape of formals
+	formals, body := form[1], form[2:]
+	return k, proc{formals, body, r}
+}
+
+func evaluateIfSyntax(form array, r *env, k continuation) (continuation, scmer) {
+	// Precondition: form[0] is |if|
+	// Match: (if <test> <consequent> <alternative>)
+	// Match: (if <test> <consequent>)
+	expectArgs("if", form[1:], 2, 3)
+	var ec, et, ef scmer = form[1], form[2], undefIf
+	if len(form) == 4 {
+		ef = form[3]
+	}
+	return evaluate(ec, r, ifCont{et, ef, r, k})
+}
+
+var undefIf = undef(symbol("if"))
+
+type ifCont struct {
+	consequent scmer
+	alternate  scmer
+	r          *env
+	k          continuation
+}
+
+func (c ifCont) resume(testResult scmer) (continuation, scmer) {
+	branch := c.consequent
+	if isFalse(testResult) {
+		branch = c.alternate
+	}
+	return evaluate(branch, c.r, c.k)
+}
+
+func evaluateSetVariableSyntax(form array, r *env, k continuation) (continuation, scmer) {
+	expectArgs("set!", form[1:], 2, 2)
+	sym, value := form[1], form[2]
+	if s, ok := sym.(symbol); !ok {
+		Fail("set!: first argument must be a symbol")
+		panic("unreachable")
+	} else {
+		return evaluate(value, r, varSetCont{s, r, k})
+	}
 }
 
 type varSetCont struct {
@@ -172,43 +239,53 @@ func (varSetCont) String() string { return "varSetCont" }
 
 func (c varSetCont) resume(value scmer) (continuation, scmer) {
 	c.r.Set(c.sym, value)
-	return c.k, list(symbol("#%undef"), symbol("set!"), c.sym)
+	return c.k, undef(symbol("set!"), c.sym)
 }
 
-func evaluateQuote(e array, r *env, k continuation) (continuation, scmer) {
-	expect("quote", e, 2, 2)
-	return k, e[1]
+func evaluateCondSyntax(form array, r *env, k continuation) (continuation, scmer) {
+	// Precondition: form[0] is |cond|
+	// Match: (cond <clause1> <clause2> ...)
+	// Each <clause> must have one of these forms:
+	//     (<test> <consequent1> ...)
+	//     (<test> => <recipient>)
+	//  and as a special case the last <clause> may be:
+	//     (else <consequent1> <consequent2> ...)
+	checkCondSyntax(form)
+	return evaluateCondClauses(form[1:], r, k)
 }
 
-func evaluateIf(e array, r *env, k continuation) (continuation, scmer) {
-	expect("if", e, 4, 4)
-	ec, et, ef := e[1], e[2], e[3]
-	return evaluate(ec, r, ifCont{et, ef, r, k})
-}
-
-type ifCont struct {
-	et, ef scmer
-	r      *env
-	k      continuation
-}
-
-func (c ifCont) resume(ec scmer) (continuation, scmer) {
-	branch := c.et
-	if flag, ok := ec.(boolean); ok && flag == false {
-		branch = c.ef
-	}
-	return evaluate(branch, c.r, c.k)
-}
-func (ifCont) String() string { return "<ifCont>" }
-
-func evaluateCond(clauses array, r *env, k continuation) (continuation, scmer) {
+// evaluateCondClauses evaluates a list of cond clauses, trying each in turn.
+func evaluateCondClauses(clauses array, r *env, k continuation) (continuation, scmer) {
 	if len(clauses) == 0 {
-		return k, list(symbol("#%undef"), symbol("cond"))
+		return k, undef(symbol("cond"))
 	} else if clause, ok := clauses[0].(array); !ok || len(clause) < 2 {
 		Fail("cond: invalid syntax in clause: %s", clauses[0])
-		panic("Fail didn't panic")
+		panic("unreachable")
 	} else {
 		return evaluate(clause[0], r, condCont{clause[1:], clauses, r, k})
+	}
+}
+
+func checkCondSyntax(form array) {
+	for i, clauseExpr := range form[1:] {
+		if clause, ok := clauseExpr.(array); !ok {
+			Fail("cond: clause #%d is not a list, which is invalid syntax: %s", i, form)
+			panic("unreachable")
+		} else if len(clause) == 0 {
+			Fail("cond: clause #%d is an empty list, which is invalid syntax: %s", i, form)
+			panic("unreachable")
+		} else if i == len(form) && clause[0] == symbol("else") {
+			// `(else ...)` is special, but only in the last clause
+			if len(clause) < 2 {
+				Fail("cond: else clause must have at least one consequent: %s", form)
+				panic("unreachable")
+			}
+		} else if len(clause) > 1 && clause[1] == symbol("=>") {
+			if len(clause) != 3 {
+				Fail("cond: clause #%d is a => clause, which must have exactly three elements: %s", i, clause)
+				panic("unreachable")
+			}
+		}
 	}
 }
 
@@ -220,14 +297,19 @@ type condCont struct {
 }
 
 func (c condCont) resume(test scmer) (continuation, scmer) {
-	if flag, ok := test.(boolean); ok && bool(!flag) {
+	if isFalse(test) {
 		// test == #f
-		return evaluateCond(c.clauses[1:], c.r, c.k)
+		return evaluateCondClauses(c.clauses[1:], c.r, c.k)
 	} else {
-		return evaluateBegin(c.consequent, c.r, c.k)
+		return evaluateBeginSyntax(c.consequent, c.r, c.k)
 	}
 }
-func (condCont) String() string { return "<condCont>" }
+
+func evaluateAndSyntax(form array, r *env, k continuation) (continuation, scmer) {
+	// Precondition: form[0] is |and|
+	// Match: (and <term1>...)
+	return evaluateAnd(form[1:], r, k)
+}
 
 func evaluateAnd(terms array, r *env, k continuation) (continuation, scmer) {
 	if len(terms) == 0 {
@@ -246,19 +328,77 @@ type andCont struct {
 }
 
 func (c andCont) resume(test scmer) (continuation, scmer) {
-	if flag, ok := test.(boolean); ok && bool(!flag) {
-		// test == #f
+	if isFalse(test) {
 		return c.k, test
 	} else {
 		return evaluateAnd(c.terms[1:], c.r, c.k)
 	}
 }
-func (andCont) String() string { return "<andCont>" }
 
-func evaluateBegin(body array, r *env, k continuation) (continuation, scmer) {
+func evaluateOrSyntax(form array, r *env, k continuation) (continuation, scmer) {
+	// Precondition: form[0] is |or|
+	// Match: (or <term1>...)
+	return evaluateOr(form[1:], r, k)
+}
+
+func evaluateOr(terms array, r *env, k continuation) (continuation, scmer) {
+	if len(terms) == 0 {
+		return k, boolean(false)
+	} else if len(terms) == 1 {
+		return evaluate(terms[0], r, k)
+	} else {
+		return evaluate(terms[0], r, orCont{terms, r, k})
+	}
+}
+
+type orCont struct {
+	terms array
+	r     *env
+	k     continuation
+}
+
+func (c orCont) resume(test scmer) (continuation, scmer) {
+	if isTrue(test) {
+		return c.k, test
+	} else {
+		return evaluateOr(c.terms[1:], c.r, c.k)
+	}
+}
+
+func evaluateLetSyntax(form array, r *env, k continuation) (continuation, scmer) {
+	// Precondition: form[0] is |let|
+	// Match:  (let ⟨bindings⟩ ⟨body1⟩ <body2> ...)
+	// ⟨bindings⟩ should have the form ( ( ⟨variable1⟩ ⟨init1⟩ ) ...)
+	// TODO: implement "named let": (let <variable> <bindings> <body>...)
+	bindings, body := form[1], form[2:]
+	b, ok := bindings.(array)
+	if !ok {
+		Fail("invalid (let ((var1 init1)...) body...) syntax: bindings must be a list")
+	}
+	vars := make(array, len(b)) // TODO: make vars []symbol instead of []scmer
+	inits := make(array, len(b))
+	for i, varVal := range b {
+		if pair, ok := varVal.(array); !ok || len(pair) != 2 {
+			Fail("invalid (let ((var1 init1)...) body...) syntax: bindings must be 2-element lists")
+			panic("unreachable")
+		} else if varName, ok := pair[0].(symbol); !ok {
+			Fail("invalid (let ((var1 init1)...) body...) syntax: bindings must bind symbols")
+			panic("unreachable")
+		} else {
+			vars[i] = varName
+			inits[i] = pair[1]
+		}
+	}
+	// transform (let ((var1 init1)...) body...)
+	//   into
+	// ((lambda (var1...) body...) init1...)
+	return evalfunCont{inits, r, k}, proc{vars, body, r}
+}
+
+func evaluateBeginSyntax(body array, r *env, k continuation) (continuation, scmer) {
 	switch len(body) {
 	case 0:
-		return k, list(symbol("#%undef"), symbol("begin"))
+		return k, undef(symbol("begin"))
 	case 1:
 		return evaluate(body[0], r, k)
 	default:
@@ -273,35 +413,106 @@ type beginCont struct {
 }
 
 func (c beginCont) resume(e scmer) (continuation, scmer) {
-	return evaluateBegin(c.body[1:], c.r, c.k)
-}
-func (beginCont) String() string { return "<beginCont>" }
-
-func evaluateLambda(formals scmer, body array, r *env, k continuation) (continuation, scmer) {
-	return k, proc{formals, body, r}
+	return evaluateBeginSyntax(c.body[1:], c.r, c.k)
 }
 
-func evaluateLet(bindings scmer, body array, r *env, k continuation) (continuation, scmer) {
-	b, ok := bindings.(array)
-	if !ok {
-		Fail("invalid let form: bindings must be ((var1 init1)...)")
+func evaluateDefineSyntax(form array, r *env, k continuation) (continuation, scmer) {
+	// Precondition: form[0] is |define|
+	// Match: (define <symbol> <expression>) | (define (<symbol> ...) <body>)
+	args := form[1:]
+	if len(args) < 2 {
+	} else if varName, val, ok := isVarDef(form); ok {
+		return evaluate(val, r, varDefCont{varName, r, k})
+	} else if fnName, args, body, ok := isFunDef(form); ok {
+		r.Define(fnName, proc{args, body, r})
+		return k, undef(symbol("define"), fnName)
 	}
-	vars, inits := array{}, array{}
-	for _, varval := range b {
-		pair, ok := varval.(array)
-		if !ok || len(pair) != 2 {
-			Fail("invalid let form: bindings must be ((var1 init1)...)")
+	Fail("invalid (define ...) syntax: %s", form)
+	panic("unreachable")
+}
+
+func isVarDef(form array) (name symbol, val scmer, ok bool) {
+	// Precondition: form[0] is |define|
+	// Match: (define <symbol> <expression>)
+	if len(form) == 3 {
+		if varName, ok := form[1].(symbol); ok {
+			return varName, form[2], true
 		}
-		vars, inits = append(vars, pair[0]), append(inits, pair[1])
 	}
-	// transform (let ((var1 init1)...) body...)
-	//   into
-	// ((lambda (var1...) body...) init1...)
-	return evalfunCont{inits, r, k}, proc{vars, body, r}
+	return
 }
 
-func evaluateApplication(functor scmer, args array, r *env, k continuation) (continuation, scmer) {
+type varDefCont struct {
+	sym symbol
+	r   *env
+	k   continuation
+}
+
+func (varDefCont) String() string { return "varDefCont" }
+
+func (c varDefCont) resume(value scmer) (continuation, scmer) {
+	c.r.Define(c.sym, value)
+	return c.k, undef(symbol("define"), c.sym)
+}
+
+func isFunDef(form array) (name symbol, formals array, body array, ok bool) {
+	// Precondition: form[0] is |define|
+	// Match: (define (<symbol> <formals>) <body> ...)
+	if template, firstArgIsList := form[1].(array); !firstArgIsList || len(template) < 1 {
+		return
+	} else if functionName, ok := template[0].(symbol); ok {
+		return functionName, template[1:], form[2:], true
+	}
+	return
+}
+
+//
+// Procedure Calls
+//
+
+func invoke(functor scmer, args array, r *env, k continuation) (continuation, scmer) {
+	switch f := functor.(type) {
+	case prim:
+		return f.f(args, r, k)
+	case cont:
+		expectArgs("<#continuation>", args, 1, 1)
+		return f.k, args[0]
+	case proc:
+		return invokeProc(f, args, r, k)
+	}
+	Fail("invalid functor: %T %s", functor, functor)
+	panic("unreachable")
+}
+
+func invokeProc(f proc, args array, r *env, k continuation) (continuation, scmer) {
+	switch a := f.params.(type) {
+	case array:
+		env := f.en.Extend(a, args)
+		return evaluateBeginSyntax(f.body, env, k)
+	case symbol:
+		env := f.en.Extend1(a, args)
+		return evaluateBeginSyntax(f.body, env, k)
+	default:
+		Fail("invalid proc parameters: %T %s", f.params, f.params)
+		panic("unreachable")
+	}
+}
+
+func evaluateNormalProcedureCall(e array, r *env, k continuation) (continuation, scmer) {
+	functor, args := e[0], e[1:]
 	return evaluate(functor, r, evalfunCont{args, r, k})
+}
+
+func asFunctor(e scmer) (functor scmer, ok bool) {
+	switch e.(type) {
+	case prim:
+		return e, true
+	case proc:
+		return e, true
+	case cont:
+		return e, true
+	}
+	return nil, false
 }
 
 type evalfunCont struct {
@@ -313,7 +524,6 @@ type evalfunCont struct {
 func (c evalfunCont) resume(functor scmer) (continuation, scmer) {
 	return evaluateArguments(c.args, c.r, applyCont{functor, c.r, c.k})
 }
-func (evalfunCont) String() string { return "<evalfunCont>" }
 
 func evaluateArguments(args array, r *env, k continuation) (continuation, scmer) {
 	if len(args) == 0 {
@@ -331,7 +541,6 @@ type argumentCont struct {
 func (c argumentCont) resume(arg scmer) (continuation, scmer) {
 	return evaluateArguments(c.args[1:], c.r, gatherCont{arg, c.k})
 }
-func (argumentCont) String() string { return "<argumentCont>" }
 
 type gatherCont struct {
 	arg scmer
@@ -341,7 +550,6 @@ type gatherCont struct {
 func (c gatherCont) resume(args scmer) (continuation, scmer) {
 	return c.k, cons(c.arg, args.(array))
 }
-func (gatherCont) String() string { return "<gatherCont>" }
 
 type applyCont struct {
 	f scmer
@@ -352,31 +560,6 @@ type applyCont struct {
 func (c applyCont) resume(args scmer) (continuation, scmer) {
 	return invoke(c.f, args.(array), c.r, c.k)
 }
-func (applyCont) String() string { return "<applyCont>" }
-
-func invoke(functor scmer, args array, r *env, k continuation) (continuation, scmer) {
-	switch f := functor.(type) {
-	case primitive:
-		return f.f(args, r, k)
-	case proc:
-		switch a := f.params.(type) {
-		case array:
-			env := f.en.Extend(a, args)
-			return evaluateBegin(f.body, env, k)
-		case symbol:
-			env := f.en.Extend1(a, args)
-			return evaluateBegin(f.body, env, k)
-		}
-	}
-	if f, ok := functor.(continuation); ok {
-		if len(args) != 1 {
-			Fail("continuations expect one argument")
-		}
-		return f, args[0]
-	}
-	Fail("invalid functor: %T %s", functor, functor)
-	panic("Fail didn't panic")
-}
 
 func lookup(e scmer, r *env, k continuation) (continuation, scmer) {
 	s := e.(symbol)
@@ -384,50 +567,30 @@ func lookup(e scmer, r *env, k continuation) (continuation, scmer) {
 	// table := r.Find(s)
 	// if table == nil {
 	// 	Fail("undefined symbol: %s", s)
-	// 	panic("Fail didn't panic")
+	// 	panic("unreachable")
 	// }
 	// return k, table.vars[s]
 }
 
-func isVarDef(form array) (name symbol, val scmer, ok bool) {
-	// assert: form === (define V E...)
-	if varname, ok := form[1].(symbol); ok && len(form) == 3 {
-		return varname, form[2], true
-	}
-	return
-}
-
-type varDefCont struct {
-	sym symbol
-	r   *env
-	k   continuation
-}
-
-func (varDefCont) String() string { return "varDefCont" }
-
-func (c varDefCont) resume(value scmer) (continuation, scmer) {
-	c.r.Define(c.sym, value)
-	return c.k, list(symbol("#%undef"), symbol("define"), c.sym)
-}
-
-func isFunDef(form array) (name symbol, args array, body array, ok bool) {
-	// assert: form === (define T E...)
-	if template, ok := form[1].(array); !ok || len(template) < 1 {
-	} else if funcname, ok := template[0].(symbol); ok {
-		return funcname, template[1:], form[2:], true
-	}
-	return
-}
-
-type primitive struct {
+type prim struct {
 	name symbol
 	f    func(actuals array, r *env, k continuation) (continuation, scmer)
 }
 
-func (x primitive) String() string {
+func (x prim) String() string {
 	return fmt.Sprintf("#<primitive:%s>", x.name)
 }
 
+type cont struct {
+	k continuation
+}
+
+func (c cont) String() string {
+	return "#<continuation>"
+}
+
+// proc represents a procedure created by a lambda expression.
+// All procedures are closures.
 type proc struct {
 	params scmer
 	body   array
@@ -442,14 +605,14 @@ func (x proc) String() string {
  Environments
 */
 
-type vars map[symbol]scmer
+type scope map[symbol]scmer
 type env struct {
-	vars
+	scope
 	outer *env
 }
 
 func (e *env) Find(s symbol) *env {
-	if _, ok := e.vars[s]; ok {
+	if _, ok := e.scope[s]; ok {
 		return e
 	} else if e.outer == nil {
 		return nil
@@ -463,29 +626,29 @@ func (e *env) Lookup(s symbol) scmer {
 	if r == nil {
 		Fail("undefined symbol: %s", s)
 	}
-	return r.vars[s]
+	return r.scope[s]
 }
 
 func (r *env) Define(variable symbol, value scmer) {
-	if _, ok := r.vars[variable]; ok {
+	if _, ok := r.scope[variable]; ok {
 		Fail("symbol %s already defined in this context", variable)
 	}
-	r.vars[variable] = value
+	r.scope[variable] = value
 }
 
 func (orig *env) Extend1(variable symbol, value scmer) (e *env) {
-	e = &env{make(vars), orig}
-	e.vars[variable] = value
+	e = &env{make(scope), orig}
+	e.scope[variable] = value
 	return
 }
 
 func (orig *env) Extend(variables, values array) (e *env) {
-	e = &env{make(vars), orig}
+	e = &env{make(scope), orig}
 	if len(variables) != len(values) {
 		Fail("arity mismatch")
 	}
 	for i, val := range values {
-		e.vars[variables[i].(symbol)] = val
+		e.scope[variables[i].(symbol)] = val
 	}
 	return
 }
@@ -494,7 +657,7 @@ func (r *env) Set(variable symbol, value scmer) {
 	if t := r.Find(variable); t == nil {
 		Fail("set: symbol '%s' is not defined", variable)
 	} else {
-		t.vars[variable] = value
+		t.scope[variable] = value
 	}
 }
 
@@ -502,54 +665,74 @@ func (r *env) Set(variable symbol, value scmer) {
  Primitives
 */
 
+// expectArgs panics if argument count is less than minArgs or greater than maxArgs.
+// Use math.MaxUInt to specify "no upper bound".
+func expectArgs(fnName string, arguments array, minArgs, maxArgs int) {
+	argCount := len(arguments)
+	if minArgs == maxArgs && argCount != minArgs {
+		Fail("%s: expected exactly %d arguments but received %d", fnName, minArgs, argCount)
+	} else if argCount < minArgs {
+		Fail("%s: expected at least %d arguments but received %d", fnName, minArgs, argCount)
+	} else if argCount > maxArgs {
+		Fail("%s: expected at most %d arguments but received %d", fnName, maxArgs, argCount)
+	}
+}
+
 var globalenv env
 
 func listPrimitive() scmer {
 	scanner := scan.NewScanner("<str>", "(lambda z z)")
 	expr, _ := read(scanner)
-	return top_level_evaluator(expr)
+	return topLevelEvaluator(expr)
 }
 
-func call_with_current_continuation(a array, r *env, k continuation) (continuation, scmer) {
-	if len(a) != 1 {
-		Fail("call-with-current-continuation: incorrect arity")
+func primApply(args array, r *env, k continuation) (continuation, scmer) {
+	// (apply proc arg1... args)
+	expectArgs("apply", args, 2, math.MaxInt)
+	if functor, ok := asFunctor(args[0]); !ok {
+		Fail("apply: first argument must be a procedure")
+		panic("unreachable")
+	} else if lastArg, ok := args[len(args)-1].(array); !ok {
+		Fail("apply: last argument must be a list")
+		panic("unreachable")
+	} else {
+		arguments := append(args[1:len(args)-1], lastArg...)
+		return invoke(functor, arguments, r, k)
 	}
-	return invoke(a[0], list(k), r, k)
 }
 
-func expect(fnName string, a array, minArgs, maxArgs int) {
-	if minArgs == maxArgs && len(a) != minArgs {
-		Fail("%s: incorrect arity; exactly %d arguments expected", fnName, minArgs)
-	} else if len(a) < minArgs {
-		Fail("%s: incorrect arity; at least %d arguments expected", fnName, minArgs)
-	} else if maxArgs > 0 && len(a) > maxArgs {
-		Fail("%s: incorrect arity; at most %d arguments expected", fnName, maxArgs)
-	}
+func primCallCC(args array, r *env, k continuation) (continuation, scmer) {
+	expectArgs("call-with-current-continuation", args, 1, 1)
+	return invoke(args[0], list(cont{k}), r, k)
 }
 
 func init() {
 	std := map[string]func(actuals array, r *env, k continuation) (continuation, scmer){
-
-		"call/cc":                        call_with_current_continuation,
-		"call-with-current-continuation": call_with_current_continuation,
+		"apply":                          primApply,
+		"call/cc":                        primCallCC,
+		"call-with-current-continuation": primCallCC,
 		"write": func(a array, r *env, k continuation) (continuation, scmer) {
-			expect("write", a, 1, 1)
+			expectArgs("write", a, 1, 1)
 			fmt.Print(a[0].String())
-			return k, list(symbol("#%undef"), symbol("write"))
+			return k, undef(symbol("write"))
 		},
 		"newline": func(a array, r *env, k continuation) (continuation, scmer) {
-			expect("newline", a, 0, 0)
+			expectArgs("newline", a, 0, 0)
 			fmt.Println()
-			return k, list(symbol("#%undef"), symbol("newline"))
+			return k, undef(symbol("newline"))
 		},
 		"+": func(a array, r *env, k continuation) (continuation, scmer) {
-			v := a[0].(flonum)
-			for _, i := range a[1:] {
+			var v flonum = 0
+			for _, i := range a {
 				v += i.(flonum)
 			}
 			return k, v
 		},
 		"-": func(a array, r *env, k continuation) (continuation, scmer) {
+			expectArgs("-", a, 1, math.MaxInt)
+			if len(a) == 1 {
+				return k, -a[0].(flonum)
+			}
 			v := a[0].(flonum)
 			for _, i := range a[1:] {
 				v -= i.(flonum)
@@ -557,13 +740,17 @@ func init() {
 			return k, v
 		},
 		"*": func(a array, r *env, k continuation) (continuation, scmer) {
-			v := a[0].(flonum)
-			for _, i := range a[1:] {
+			var v flonum = 1
+			for _, i := range a {
 				v *= i.(flonum)
 			}
 			return k, v
 		},
 		"/": func(a array, r *env, k continuation) (continuation, scmer) {
+			expectArgs("/", a, 1, math.MaxInt)
+			if len(a) == 1 {
+				return k, 1 / a[0].(flonum)
+			}
 			v := a[0].(flonum)
 			for _, i := range a[1:] {
 				v /= i.(flonum)
@@ -614,7 +801,6 @@ func init() {
 			}
 			return k, boolean(false)
 		},
-		"and": evaluateAnd,
 		"null?": func(a array, r *env, k continuation) (continuation, scmer) {
 			if list, ok := a[0].(array); ok && len(list) == 0 {
 				return k, boolean(true)
@@ -635,13 +821,13 @@ func init() {
 			} else {
 				Fail("error: %s", a)
 			}
-			panic("Fail didn't panic")
+			panic("unreachable")
 		},
 	}
-	builtins := vars{}
+	builtins := scope{}
 	for k, v := range std {
 		sym := symbol(k)
-		builtins[sym] = primitive{sym, v}
+		builtins[sym] = prim{sym, v}
 	}
 
 	builtins[symbol("list")] = listPrimitive()
@@ -667,6 +853,18 @@ type str string     // ...str by string,
 type char rune      // ...char by rune
 type boolean bool   // ...boolean by bool
 
+func isFalse(x scmer) bool {
+	if b, ok := x.(boolean); ok {
+		return b == false
+	}
+	return false
+}
+
+// In Scheme, only #f is falsy. Absolutely _everything_ else is truthy.
+func isTrue(x scmer) bool {
+	return !isFalse(x)
+}
+
 func (a array) String() string {
 	l := make([]string, len(a))
 	for i, x := range a {
@@ -684,6 +882,11 @@ func cons(e scmer, a array) array {
 
 func list(args ...scmer) array {
 	return array(args)
+}
+
+// undef() is like list(), but it adds |#%undef| as the first element.
+func undef(sym symbol, obj ...scmer) scmer {
+	return array(append([]scmer{symbol("#%undef"), sym}, obj...))
 }
 
 func (x symbol) String() string {

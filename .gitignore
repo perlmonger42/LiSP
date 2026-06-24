@@ -1,6 +1,9 @@
+.idea/
+**/*.iml
+.run/
+.scout/
+mcp-server.log
 .coverage-data-files/
 .coverage-data.txt
-.idea/
-mcp-server.log
 LiSP
 LiSP.history

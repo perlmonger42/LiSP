@@ -160,11 +160,11 @@ func TestRerc_missingExpected(t *testing.T) {
 }
 
 // TestRerc_unexpectedError: eval errors but expected is a concrete value (not ***).
-// fail() does not clear err, so Rerc returns both failed=true and the eval error.
+// fail() prints and clears err, so Rerc returns failed=true with err==nil.
 func TestRerc_unexpectedError(t *testing.T) {
 	failed, err := rerc("undefined-sym 42")
-	if !failed || err == nil {
-		t.Errorf("got failed=%v err=%v, want true non-nil", failed, err)
+	if !failed || err != nil {
+		t.Errorf("got failed=%v err=%v, want true nil", failed, err)
 	}
 }
 
