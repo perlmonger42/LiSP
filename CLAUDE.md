@@ -35,8 +35,9 @@ hardcodes the old Homebrew path. The linker ignores the missing path and uses
 
 - `cmd/LiSP/` — the interpreter binary
 - `internal/scan/` — the scanner (hand-written inline scanner, ~124 MB/s)
-- `research/scan-lexers/` — six scanner implementations built to find the
-  fastest approach; see `research/scan-lexers/README.md` for the benchmark
-  story. All live in `package scanlexers`.
 - `test/` — shell-script integration tests run by `RUN.zsh`
-- `reference/` — reference Scheme source files
+
+The six experimental lexers that led to `internal/scan` now live in their own
+repo: https://github.com/perlmonger42/go-lexer-research. The reference Scheme
+implementations (Norvig's `lis.py`, Kelchtermans' `scm.go`) are preserved on
+the `reference-archive` branch of this repo.

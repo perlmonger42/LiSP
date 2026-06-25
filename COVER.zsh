@@ -65,7 +65,7 @@ go tool cover -html=.coverage-data.txt
 ###     && test/script.sh \
 ###     && ./LiSP -e '(+ 2 3)' \
 ###     && (echo '(* 2 3)' | ./LiSP) \
-###     && (echo '(* 2 3)' | ./LiSP reference/continuations-examples.scm - test/sample-input.scm) \
+###     && (echo '(* 2 3)' | ./LiSP - test/sample-input.scm) \
 ###     && (./LiSP --rapunzel && echo Should have failed || echo Okay) \
 ### || echo FAILED
 ###

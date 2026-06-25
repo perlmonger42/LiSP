@@ -27,6 +27,9 @@ To Do
 - [ ] Fix symbol input (convert "x\ y" and "|x y|" into a symbol named "x y").
 - [ ] Fix symbol output (convert a symbol named "x y" into "|x y|" on output)
 - [ ] Implement equal? that handles cyclic data structures.
+- [ ] Implement `define-syntax` / `syntax-rules`. Once available, wire up the
+  SAT-solver `amb` example in `test/SAT-solver.scm` (it uses `define-syntax`)
+  as a test.
 
 
 Done

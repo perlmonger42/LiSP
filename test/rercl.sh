@@ -252,6 +252,10 @@ EOF
 echo Test continuations
 #./LiSP -verbose -test <<'EOF'
 ./LiSP -test <<'EOF'
+    ;;; PROVENANCE: the time-traveling-search (amb) example below is adapted
+    ;;; from Matt Might, "Continuations by example: Exceptions, time-traveling
+    ;;; search, generators, threads, and coroutines":
+    ;;; http://matt.might.net/articles/programming-with-continuations--exceptions-backtracking-search-threads-generators-coroutines/
     (define (current-continuation)
       (call-with-current-continuation
        (lambda (cc) cc) ) )
