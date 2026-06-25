@@ -29,7 +29,13 @@ go build -cover -o ./LiSP ./cmd/LiSP || (echo go build failed && false)
 go test -cover ./cmd/LiSP/... ./internal/... || (echo go test failed && false)
 
 # Integration tests — the binary writes profiles to GOCOVERDIR automatically
-test/script.sh || (echo test script failed && false)
+echo Running test/script.sh
+./test/script.sh
+echo Testing test/test-all.rercl
+./LiSP -test test/test-all.rercl
+
+echo Testing test/pythagorean-triples.scm
+(cat test/pythagorean-triples.scm; echo '(3 4 5)') | ./LiSP -test -
 
 # Merge all coverage data into a single text profile and open HTML report
 go tool covdata textfmt -i=$GOCOVERDIR -o=.coverage-data.txt

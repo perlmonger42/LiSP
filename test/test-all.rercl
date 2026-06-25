@@ -1,0 +1,253 @@
+    42 ; this is a line comment
+    42
+
+    43 #| this is a #|nested|# block comment |#
+    43
+
+    (list #\a #\z #\space #\ﬃ  #\xFB01 #\😀 #\X1F61E #\xE0020)
+    ; LATIN SMALL LIGATURE FII, LATIN SMALL LIGATURE FI, GRINNING FACE, DISAPPOINTED FACE, TAG ASTERISK
+    (#\a #\z #\space #\ﬃ #\ﬁ #\😀 #\😞 #\xe0020)
+
+    3.14159265  3.14159265
+    (/ 355 113) 3.1415929203539825
+
+    "howdy" "howdy"
+    (cons 1 (cons 2 (cons 3 (quote ()))))  (1 2 3)
+
+    ; TODO: fails to compare with DeepEquals
+    ; (lambda (x) (cons x (cons (+ x 1) (cons (+ x 2) null))))
+    ; (lambda (x) (cons x (cons (+ x 1) (cons (+ x 2) null))))
+
+    ((lambda (x) (cons x (cons (+ x 1) (cons (+ x 2) null)))) 17)
+    (17 18 19)
+
+    (+ 1 2 4.5)  7.5
+
+    ; TODO: fails to compare with DeepEquals
+    ;(list 1 2 3.4 (quote (10 9 8)) #t #f (lambda (x) x))
+    ;(1 2 3.4 (10 9 8) #t #f (lambda (x) x))
+
+    (define (double x) (* x 2)) ---
+    (double 7)                    14
+    (double 1.25)                 2.5
+
+    (apply + '(1000 200 30 4))    1234
+    (apply * 2 3 '(5 7))          210
+    '(+ 8 9)                      (+ 8 9)
+
+
+    ; --- lambda ---
+    ((lambda (x) x) 0)            0             ; single parameter
+    ((lambda (x y z) y) 1 2 3)    2             ; multiple parameters
+    ((lambda (x y z) x y) 4 5 6)  5             ; multiple body exprs
+    ;(lambda l l)                 (lambda l l)  ; variadic lambda
+    ((lambda x x) 1 2 3)          (1 2 3)       ; variadic lambda
+    (lambda 7)                    ***           ; invalid syntax
+    (lambda (7))                  ***           ; invalid syntax
+
+
+    ; basic arithmetic
+    (+)       0
+    (+ 11)    11
+    (+ 9 1)   10
+    (+ 2 5 8) 15
+    (*)       1
+    (* 13)    13
+    (* 2 3)   6
+
+    (-)         ***
+    (- 14)      -14
+    (- 10 4)    6
+    (- 10 1 5)  4
+    (/)         ***
+    (/ 4)       0.25
+    (/ 10 4)    2.5
+    (/ 30 2 3)  5
+
+    ; character syntax
+    #\c          #\x63
+    #\nul        #\x0
+    #\backspace  #\x8
+    #\tab        #\x9
+    #\newline    #\xA
+    #\vtab       #\xB
+    #\page       #\xC
+    #\return     #\xD
+    #\rubout     #\x7F
+    #\x00000085  #\x85
+
+    ; --- symbols ---
+    '()                        ()
+    (quote ())                 ()
+    (quote ||)                 ||
+    (quote |!@#$|)             |!@#$|
+    '|x|                       |x|
+    undefined-sym              ***
+
+    ; --- missing functor ---
+    (())                             ***
+    ; --- invalid functor ---
+    (1)                              ***
+
+    ; --- if ---
+    (if #t      )              ***  ; invalid arity
+    (if #t 1 2)                1
+    (if #f 1 2)                2
+    (if #t 1 2 3)              ***  ; invalid arity
+    (if 0 "yes" "no")          "yes"
+    (if #t "ok")               "ok"
+    (if #f "ok")               (|#%undef| if)
+
+    ; --- cond ---
+    (cond)                           (|#%undef| cond)
+    (cond 1)                         *** ; invalid syntax
+    (cond (2))                       2
+    (cond (#t 3))                    3
+    (cond (#f 1) (#t 4))             4
+    (cond (#t 1 2 3))                3        ; clause body is a begin-sequence
+    (cond (#t 9) (oops 0))           9        ; short-circuit: later clause tests aren't evaluated
+
+    ; |=>| is special only in a 3-element cond clause
+    (cond (#f 0) (#f => -) (8))               8        ; arrow syntax: test is falsy
+    (cond (#f 0) (7 => -) )                   -7       ; arrow syntax: test passed to functor
+    (let ((=> "arrow")) (cond (=>)))          "arrow"  ; not a 3-element arrow clause
+    (let ((=> "arrow")) (cond (#t =>)))       "arrow"  ; not a 3-element arrow clause
+    (let ((=> "arrow")) (cond (#t => not)))   #f       ;  is a 3-element arrow clause
+    (let ((=> "arrow")) (cond (#t => not 5))) 5        ; not a 3-element arrow clause
+
+    ; |else| is special only when it is the first element of the last cond clause
+    (let ((else "alpha")) (cond (else) (#t)))    "alpha"
+    (let ((else "bravo")) (cond (#t else) (#t))) "bravo"
+    (cond (#f 1) (else 5))                       5        ; else catch-all, taken
+    (cond (else 7))                              7        ; else as the sole (last) clause
+    (cond (#f) (else 6))                         6        ; test-only false falls through to else
+
+    (cond (#f 1) 2        )          *** ; syntax error: clause is not a list
+    (cond (#f 3) ()       )          *** ; syntax error: clause is an empty list
+    (cond (#f 4) (else)   )          *** ; syntax error: else clause must have at least one consequent
+
+
+
+    ; --- and ---
+    (and)                           #t
+    (and #f)                        #f
+    (and  1)                        1
+    (and #f #f)                     #f
+    (and #f  8)                     #f
+    (and  2 #f)                     #f
+    (and  3  9)                     9
+    (and #f #f #f)                  #f
+    (and #f #f  5)                  #f
+    (and #f  1 #f)                  #f
+    (and #f  2  6)                  #f
+    (and  4 #f #f)                  #f
+    (and  5 #f  7)                  #f
+    (and  6  3 #f)                  #f
+    (and  7  4  8)                  8
+
+    ; --- or ---
+    (or)                            #f
+    (or #f)                         #f
+    (or  1)                         1
+    (or #f #f)                      #f
+    (or #f  8)                      8
+    (or  2 #f)                      2
+    (or  3  9)                      3
+    (or #f #f #f)                   #f
+    (or #f #f  5)                   5
+    (or #f  1 #f)                   1
+    (or #f  2  6)                   2
+    (or  4 #f #f)                   4
+    (or  5 #f  7)                   5
+    (or  6  3 #f)                   6
+    (or  7  4  8)                   7
+
+    ; --- begin ---
+    (begin)                          (|#%undef| begin)
+    (begin 1 2 3)                    3
+
+    ; --- set! ---
+    (define var-x 0)                 (|#%undef| define var-x)
+    (set! var-x 77)                  (|#%undef| set! var-x)
+    var-x                            77
+
+    ; --- let ---
+    (let ((a 3) (b 4)) (* a b))      12
+    (let 1 body)                     *** ; invalid syntax
+    (let (1) body)                   *** ; invalid syntax
+    (let ((x)) body)                 *** ; invalid syntax
+
+    ; --- call/cc ---
+    (call/cc (lambda (k) 42))                42
+    (call/cc (lambda (k) (k 99) 0))          99
+    (call/cc (lambda (k) (k 1 2)))           ***
+    (call/cc (lambda (k) 1) (lambda (k) 2))  ***
+
+    ; --- arithmetic ---
+    (/ 10 2)                         5
+    (+ (* (/ 1000 100) 9) 8)         98
+
+    ; --- comparisons ---
+    (equal? 1 1)                     #t
+    (equal? 1 2)                     #f
+    (= 1 2)                          #f
+    (= 2 2)                          #t
+    (!= 1 1)                         #f
+    (!= 1 2)                         #t
+    (< 1 2)                          #t
+    (< 2 2)                          #f
+    (< 3 2)                          #f
+    (<= 0 1)                         #t
+    (<= 1 1)                         #t
+    (<= 2 1)                         #f
+    (> 3 2)                          #t
+    (> 3 3)                          #f
+    (> 3 4)                          #f
+    (>= 1 0)                         #t
+    (>= 1 1)                         #t
+    (>= 1 2)                         #f
+
+    ; --- car cdr cons ---
+    (car '(10 20 30))                10
+    (cdr '(10 20 30))                (20 30)
+    (cons 7 '(8 9))                  (7 8 9)
+    (cons 1 2)                       (1 2)
+
+    ; TODO: Add fixnum datatypes
+    ; TODO: Properly implement = eq? eqv? equal?
+    ; These currently fail because length returns fixnum, 3 scans as flonum,
+    ; and -test uses reflect.DeepEqual(value, expect) rather than a
+    ; proper comparison.
+    ; (length '(a b c))                3
+    ; (length null)                    0
+
+    ; --- not ---
+    (not #f)                         #t
+    (not #t)                         #f
+    (not 0)                          #f
+
+    ; --- null? pair? ---
+    (null? null)                     #t
+    (null? '(1))                     #f
+    (pair? '(1))                     #t
+    (pair? null)                     #f
+
+    ; --- error (all three arity branches) ---
+    (error)                          ***
+    (error "oops")                   ***
+    (error "a" "b")                  ***
+
+    ; --- invalid define forms ---
+    (define no-val)                  ***
+    (define (1 2) body)              ***
+
+    ; --- duplicate define
+    (define dup-def 1)               ---
+    (define dup-def 2)               ***
+
+    ; --- lambda arity mismatch
+    ((lambda (x y) x) 1)             ***
+
+    ; --- set! errors ---
+    (set! 42 0)                      ***
+    (set! no-such-set-var 0)         ***

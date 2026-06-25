@@ -250,6 +250,8 @@ func evaluateCondSyntax(form array, r *env, k continuation) (continuation, scmer
 	//     (<test> => <recipient>)
 	//  and as a special case the last <clause> may be:
 	//     (else <consequent1> <consequent2> ...)
+	// Note that `else` is special only when it is the first element of the last clause.
+	// Note that `=>` is special only when it is the second element of a three-element clause.
 	checkCondSyntax(form)
 	return evaluateCondClauses(form[1:], r, k)
 }
@@ -258,31 +260,36 @@ func evaluateCondSyntax(form array, r *env, k continuation) (continuation, scmer
 func evaluateCondClauses(clauses array, r *env, k continuation) (continuation, scmer) {
 	if len(clauses) == 0 {
 		return k, undef(symbol("cond"))
-	} else if clause, ok := clauses[0].(array); !ok || len(clause) < 2 {
-		Fail("cond: invalid syntax in clause: %s", clauses[0])
-		panic("unreachable")
-	} else {
-		return evaluate(clause[0], r, condCont{clause[1:], clauses, r, k})
 	}
+	// checkCondSyntax has already verified every clause is a non-empty list.
+	clause := clauses[0].(array)
+	if len(clauses) == 1 && clause[0] == symbol("else") {
+		// `else` is the catch-all test, but only as the last clause (R5RS). In
+		// any other position `else` is an ordinary (here, unbound) test.
+		return evaluateBeginSyntax(clause[1:], r, k)
+	}
+	if len(clause) == 3 && clause[1] == symbol("=>") {
+		// (<test> => <functor>): if the test is true, apply <functor> to the
+		// test value and return the result.
+		return evaluate(clause[0], r, condArrowCont{clause[2], clauses, r, k})
+	}
+	return evaluate(clause[0], r, condCont{clause[1:], clauses, r, k})
 }
 
 func checkCondSyntax(form array) {
-	for i, clauseExpr := range form[1:] {
+	clauses := form[1:]
+	for i, clauseExpr := range clauses {
+		isLastClause := i == len(clauses)-1
 		if clause, ok := clauseExpr.(array); !ok {
-			Fail("cond: clause #%d is not a list, which is invalid syntax: %s", i, form)
+			Fail("cond: clause #%d is not a list, which is invalid syntax: %s", i+1, form)
 			panic("unreachable")
 		} else if len(clause) == 0 {
-			Fail("cond: clause #%d is an empty list, which is invalid syntax: %s", i, form)
+			Fail("cond: clause #%d is an empty list, which is invalid syntax: %s", i+1, form)
 			panic("unreachable")
-		} else if i == len(form) && clause[0] == symbol("else") {
-			// `(else ...)` is special, but only in the last clause
+		} else if isLastClause && clause[0] == symbol("else") {
+			// `(else ...)` is special, but only as the last clause.
 			if len(clause) < 2 {
-				Fail("cond: else clause must have at least one consequent: %s", form)
-				panic("unreachable")
-			}
-		} else if len(clause) > 1 && clause[1] == symbol("=>") {
-			if len(clause) != 3 {
-				Fail("cond: clause #%d is a => clause, which must have exactly three elements: %s", i, clause)
+				Fail("cond: clause #%d is an else clause without at least one consequent, which is invalid syntax: %s", i+1, form)
 				panic("unreachable")
 			}
 		}
@@ -298,11 +305,42 @@ type condCont struct {
 
 func (c condCont) resume(test scmer) (continuation, scmer) {
 	if isFalse(test) {
-		// test == #f
+		// test == #f: try the remaining clauses
 		return evaluateCondClauses(c.clauses[1:], c.r, c.k)
+	} else if len(c.consequent) == 0 {
+		// (<test>) with no consequents: the test value is the result (R5RS)
+		return c.k, test
 	} else {
 		return evaluateBeginSyntax(c.consequent, c.r, c.k)
 	}
+}
+
+// condArrowCont handles a (<test> => <functor>) clause once <test> is evaluated.
+type condArrowCont struct {
+	functor scmer // the <functor> expression
+	clauses array // clauses[0] is this clause
+	r       *env
+	k       continuation
+}
+
+func (c condArrowCont) resume(test scmer) (continuation, scmer) {
+	if isFalse(test) {
+		// test == #f: try the remaining clauses
+		return evaluateCondClauses(c.clauses[1:], c.r, c.k)
+	}
+	// Evaluate <functor>, then apply it to the test value.
+	return evaluate(c.functor, c.r, condRecipientCont{test, c.r, c.k})
+}
+
+// condRecipientCont applies an evaluated <functor> to the saved test value.
+type condRecipientCont struct {
+	arg scmer // the test value to pass to <functor>
+	r   *env
+	k   continuation
+}
+
+func (c condRecipientCont) resume(functor scmer) (continuation, scmer) {
+	return invoke(functor, list(c.arg), c.r, c.k)
 }
 
 func evaluateAndSyntax(form array, r *env, k continuation) (continuation, scmer) {
