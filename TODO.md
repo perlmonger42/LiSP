@@ -1,15 +1,16 @@
 To Do
 ========================================================================
 
+- [ ] Implement equality comparisons correctly (`eqv?`, `eq?`, `equal?`)
 - [ ] Change environment representation from hash table to assoc list.
 - [ ] Make the command-line flag -trace available to lisp code via a global
   variable (e.g., #%trace).
 - [ ] Implement S-expression comments.
-  A #; starts an S-expression comment. When the reader encounters #;, it
+  A `#;` starts an S-expression comment. When the reader encounters `#;`, it
   recursively reads one datum, and then discards it (continuing on to the next
   datum for the read result).
 - [ ] Implement shebang comments.
-  A #!  (which is #! followed by a space) or #!/ starts a line comment that can
+  A `#! ` (which is `#!` followed by a space) or `#!/` starts a line comment that can
   be continued to the next line by ending a line with \. This form of comment
   normally appears at the beginning of a Unix script file.
 - [ ] Strings are currently defined as `/"([^"\\]+|\\[^\n])*"/`. Implement a

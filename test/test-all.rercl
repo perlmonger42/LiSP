@@ -122,9 +122,9 @@
     (cond (else 7))                              7        ; else as the sole (last) clause
     (cond (#f) (else 6))                         6        ; test-only false falls through to else
 
-    (cond (#f 1) 2        )          *** ; syntax error: clause is not a list
-    (cond (#f 3) ()       )          *** ; syntax error: clause is an empty list
-    (cond (#f 4) (else)   )          *** ; syntax error: else clause must have at least one consequent
+    (cond (#f 1) +        )          (*** cond-clause-not-list)       ; clause is not a list
+    (cond (#f 2) ()       )          (*** cond-clause-empty)          ; clause is an empty list
+    (cond (#f 3) (else)   )          (*** cond-else-no-consequent)    ; else clause has no consequent
 
 
 

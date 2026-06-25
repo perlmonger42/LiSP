@@ -55,21 +55,40 @@ Eval / Apply
 */
 var Tracing bool
 
-type FailMessage struct{ msg string }
+// Condition is the structured error object raised by Fail/Failc. `code` is
+// machine-readable metadata — used by the test harness now, and the seed of the
+// R7RS condition object later — while `message` is the human-readable text the
+// REPL prints. `irritants` holds R7RS-style irritant objects (unused for now).
+// Condition satisfies the error interface, so it flows through the existing
+// error-returning paths unchanged; the code rides along for callers that want it.
+type Condition struct {
+	code      symbol
+	message   string
+	irritants []scmer
+}
 
-func Fail(format string, a ...interface{}) {
-	panic(FailMessage{fmt.Sprintf(format, a...)})
+func (c Condition) Error() string { return c.message }
+
+// Fail raises a Condition with the generic code `error`.
+func Fail(format string, a ...any) {
+	Failc(symbol("error"), format, a...)
+}
+
+// Failc raises a Condition tagged with a specific machine-readable code.
+// The code is metadata only; it is not part of the printed message.
+func Failc(code symbol, format string, a ...any) {
+	panic(Condition{code: code, message: fmt.Sprintf(format, a...)})
 }
 
 func topLevelEvaluate(e scmer) (result scmer, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			// panic() was called
-			if f, ok := r.(FailMessage); ok {
-				err = fmt.Errorf("%s", f.msg) // panic was from Fail(), so return its payload as err.
+			if c, ok := r.(Condition); ok {
+				err = c // from Fail()/Failc(); Condition is an error, code preserved.
 			} else {
 				fmt.Printf("topLevelEvaluate: %v (%T)\n", r, r)
-				panic(r) // re-panic if it wasn't Fail() that called panic
+				panic(r) // re-panic if it wasn't Fail()/Failc() that called panic
 			}
 		}
 	}()
@@ -281,15 +300,15 @@ func checkCondSyntax(form array) {
 	for i, clauseExpr := range clauses {
 		isLastClause := i == len(clauses)-1
 		if clause, ok := clauseExpr.(array); !ok {
-			Fail("cond: clause #%d is not a list, which is invalid syntax: %s", i+1, form)
+			Failc("cond-clause-not-list", "cond: clause #%d is not a list, which is invalid syntax: %s", i+1, form)
 			panic("unreachable")
 		} else if len(clause) == 0 {
-			Fail("cond: clause #%d is an empty list, which is invalid syntax: %s", i+1, form)
+			Failc("cond-clause-empty", "cond: clause #%d is an empty list, which is invalid syntax: %s", i+1, form)
 			panic("unreachable")
 		} else if isLastClause && clause[0] == symbol("else") {
 			// `(else ...)` is special, but only as the last clause.
 			if len(clause) < 2 {
-				Fail("cond: clause #%d is an else clause without at least one consequent, which is invalid syntax: %s", i+1, form)
+				Failc("cond-else-no-consequent", "cond: clause #%d is an else clause without at least one consequent, which is invalid syntax: %s", i+1, form)
 				panic("unreachable")
 			}
 		}

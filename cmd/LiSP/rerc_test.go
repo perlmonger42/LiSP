@@ -55,6 +55,76 @@ func TestRerc_errorExpected_noError(t *testing.T) {
 	}
 }
 
+// TestRerc_errorCode_match: (*** code) passes when the error's Condition code
+// matches. (cond ()) raises code cond-clause-empty.
+func TestRerc_errorCode_match(t *testing.T) {
+	failed, err := rerc("(cond ()) (*** cond-clause-empty)")
+	if failed || err != nil {
+		t.Errorf("got failed=%v err=%v, want false nil", failed, err)
+	}
+}
+
+// TestRerc_errorCode_mismatch: (*** code) fails when an error occurs but its
+// code differs from the expected one.
+func TestRerc_errorCode_mismatch(t *testing.T) {
+	failed, err := rerc("(cond ()) (*** cond-clause-not-list)")
+	if !failed || err != nil {
+		t.Errorf("got failed=%v err=%v, want true nil", failed, err)
+	}
+}
+
+// TestRerc_errorCode_noError: (*** code) fails when evaluation succeeds (no
+// error to match the code against).
+func TestRerc_errorCode_noError(t *testing.T) {
+	failed, err := rerc("(+ 1 2) (*** cond-clause-empty)")
+	if !failed || err != nil {
+		t.Errorf("got failed=%v err=%v, want true nil", failed, err)
+	}
+}
+
+// TestRerc_errorList_anyCode: (***) — a list form with no code — accepts any
+// error, like bare ***.
+func TestRerc_errorList_anyCode(t *testing.T) {
+	failed, err := rerc("(cond ()) (***)")
+	if failed || err != nil {
+		t.Errorf("got failed=%v err=%v, want false nil", failed, err)
+	}
+}
+
+// TestRerc_errorCode_genericFallback: an uncoded Fail carries the generic code
+// `error`, so (*** error) matches it.
+func TestRerc_errorCode_genericFallback(t *testing.T) {
+	failed, err := rerc("undefined-sym (*** error)")
+	if failed || err != nil {
+		t.Errorf("got failed=%v err=%v, want false nil", failed, err)
+	}
+}
+
+// TestErrorExpectation parses the (*** [code]) datum form directly.
+func TestErrorExpectation(t *testing.T) {
+	expectError = symbol("***")
+	cases := []struct {
+		name      string
+		expect    scmer
+		wantCode  symbol
+		wantHas   bool
+		wantIsExp bool
+	}{
+		{"bare-symbol-not-list", symbol("***"), "", false, false},
+		{"list-no-code", array{symbol("***")}, "", false, true},
+		{"list-with-code", array{symbol("***"), symbol("my-code")}, "my-code", true, true},
+		{"not-an-error-expectation", array{symbol("foo"), symbol("bar")}, "", false, false},
+		{"plain-value", flonum(3), "", false, false},
+	}
+	for _, c := range cases {
+		code, hasCode, isExp := errorExpectation(c.expect)
+		if code != c.wantCode || hasCode != c.wantHas || isExp != c.wantIsExp {
+			t.Errorf("%s: errorExpectation(%v) = (%q, %v, %v), want (%q, %v, %v)",
+				c.name, c.expect, code, hasCode, isExp, c.wantCode, c.wantHas, c.wantIsExp)
+		}
+	}
+}
+
 // TestRerc_eof: empty input returns io.EOF without failure.
 func TestRerc_eof(t *testing.T) {
 	failed, err := rerc("")
@@ -168,12 +238,13 @@ func TestRerc_unexpectedError(t *testing.T) {
 	}
 }
 
-// TestRercl_withFailure: one mismatched pair; Rercl still returns nil (failures
-// are printed, not returned as errors).
+// TestRercl_withFailure: a mismatched pair makes Rercl return a non-nil error
+// (which propagates to a non-zero exit status) even though the per-pair details
+// are also printed. The passing pair must not suppress that.
 func TestRercl_withFailure(t *testing.T) {
 	input := "(+ 1 2) 99\n(* 2 3) 6\n"
-	if err := Rercl(scan.NewScanner("", input), false); err != nil {
-		t.Errorf("Rercl with failure: got %v, want nil", err)
+	if err := Rercl(scan.NewScanner("", input), false); err == nil {
+		t.Error("Rercl with a failing pair: got nil, want non-nil error")
 	}
 }
 

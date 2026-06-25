@@ -188,20 +188,25 @@ func Rercl(scanner *scan.Scanner, interactive bool) error {
 	expectError = symbol("***")
 	dontCare = symbol("---")
 
-	var err error = nil
-	failed := false
+	checks := 0
 	failures := 0
-
-	for err == nil {
-		failed, err = Rerc(scanner)
+	for {
+		failed, err := Rerc(scanner)
+		if err == io.EOF {
+			break // end of input
+		}
+		if err != nil {
+			return err // harness-level error (e.g. could not read the expected value)
+		}
+		checks++
 		if failed {
-			failures += 1
+			failures++
 		}
 	}
-	if err == io.EOF {
-		return nil
+	if failures > 0 {
+		return fmt.Errorf("%d of %d RERC check(s) failed", failures, checks)
 	}
-	return err
+	return nil
 }
 
 // Rerc does a SINGLE Read, Eval, Read and Compare.
@@ -211,13 +216,14 @@ func Rercl(scanner *scan.Scanner, interactive bool) error {
 //
 // Special values for the second datum:
 //
-//	***  this means that an error is expected
-//	---  this means that no error is expected but the value is unimportant
+//	***          an error is expected (any error)
+//	(*** code)   an error is expected whose Condition code is `code`
+//	---          no error is expected but the value is unimportant
 func Rerc(scanner *scan.Scanner) (failed bool, err error) {
 	var datum, value, expect scmer
 	var err2 error
 
-	fail := func(format string, a ...interface{}) {
+	fail := func(format string, a ...any) {
 		failed = true
 		why := fmt.Sprintf(format, a...)
 		fmt.Printf("%s\n   input: %s\n  evaled: %s\n  expect: %s\n",
@@ -245,12 +251,48 @@ func Rerc(scanner *scan.Scanner) (failed bool, err error) {
 			fail("expected error, but none occurred during evaluation of %s", datum)
 		}
 		err = nil
+	} else if code, hasCode, isErrExp := errorExpectation(expect); isErrExp {
+		// (*** [code]) — an error is expected, optionally with a specific code.
+		if err == nil {
+			fail("expected error, but none occurred during evaluation of %s", datum)
+		} else if hasCode {
+			if actual, ok := errorCode(err); !ok {
+				fail("expected error code %s, but the error carried no code", code)
+			} else if actual != code {
+				fail("expected error code %s, but got %s", code, actual)
+			}
+		}
+		err = nil
 	} else if err != nil {
 		fail("unexpected error")
 	} else if !reflect.DeepEqual(value, expect) { // TODO: implement (equal? ...)
 		fail("unexpected value")
 	}
 	return
+}
+
+// errorExpectation reports whether expect is an error expectation of the form
+// (*** [code]). isErrExp is true for any list whose first element is ***;
+// hasCode is true when a symbol code follows ***.
+func errorExpectation(expect scmer) (code symbol, hasCode, isErrExp bool) {
+	a, ok := expect.(array)
+	if !ok || len(a) == 0 || a[0] != expectError {
+		return "", false, false
+	}
+	if len(a) >= 2 {
+		if c, ok := a[1].(symbol); ok {
+			return c, true, true
+		}
+	}
+	return "", false, true
+}
+
+// errorCode extracts the machine-readable code from a Condition error.
+func errorCode(err error) (symbol, bool) {
+	if c, ok := err.(Condition); ok {
+		return c.code, true
+	}
+	return "", false
 }
 
 func neverNil(x scmer) scmer {

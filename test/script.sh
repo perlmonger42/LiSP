@@ -169,17 +169,46 @@ fi
 
 
 # ---------------------------------------------------------------------------
-# Test 6: RERC mode — mismatch is reported on stdout
+# Test 6: RERC mode — a mismatch is reported on stdout AND exits non-zero
 # ---------------------------------------------------------------------------
 
 cat > ${TMPDIR}/test-rerc-fail.scm <<'EOF'
 (+ 1 2)  99
 EOF
 
-rerc_fail_output=$($LiSP --test ${TMPDIR}/test-rerc-fail.scm 2>&1)
-if ! echo "$rerc_fail_output" | grep -q "unexpected value"; then
-  echo "FAILED: RERC mismatch test should have printed 'unexpected value'"
+# `&& rc=0 || rc=$?` captures the exit status without tripping `set -e`.
+rerc_fail_output=$($LiSP --test ${TMPDIR}/test-rerc-fail.scm 2>&1) && rc=0 || rc=$?
+if [[ $rc -eq 0 ]] || ! echo "$rerc_fail_output" | grep -q "unexpected value"; then
+  echo "FAILED: RERC mismatch should print 'unexpected value' and exit non-zero (got rc=$rc)"
   echo "  got: $rerc_fail_output"
+  exit 1
+fi
+
+
+# ---------------------------------------------------------------------------
+# Test 6b: RERC error-code matching — (*** code) discriminates by error code,
+# and a RERC failure propagates to a non-zero exit status.
+# ---------------------------------------------------------------------------
+
+# A matching code passes silently and exits 0.
+out=$(printf '(cond ()) (*** cond-clause-empty)\n' | $LiSP -test - 2>&1) && rc=0 || rc=$?
+if [[ $rc -ne 0 || -n "$out" ]]; then
+  echo "FAILED: (*** matching-code) should pass silently with exit 0 (got rc=$rc): $out"
+  exit 1
+fi
+
+# A WRONG code is reported AND exits non-zero — the property that makes the
+# RERC error checks trustworthy (an error raised some other way won't pass).
+out=$(printf '(cond ()) (*** not-really-this-error)\n' | $LiSP -test - 2>&1) && rc=0 || rc=$?
+if [[ $rc -eq 0 ]] || ! echo "$out" | grep -q "expected error code not-really-this-error"; then
+  echo "FAILED: (*** wrong-code) should report a mismatch and exit non-zero (got rc=$rc): $out"
+  exit 1
+fi
+
+# (*** code) when no error occurs is reported AND exits non-zero.
+out=$(printf '(+ 1 2) (*** some-code)\n' | $LiSP -test - 2>&1) && rc=0 || rc=$?
+if [[ $rc -eq 0 ]] || ! echo "$out" | grep -q "expected error"; then
+  echo "FAILED: (*** code) with no error should report a failure and exit non-zero (got rc=$rc): $out"
   exit 1
 fi
 
