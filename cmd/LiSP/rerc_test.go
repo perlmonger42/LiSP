@@ -91,13 +91,21 @@ func TestRerc_errorList_anyCode(t *testing.T) {
 	}
 }
 
-// TestRerc_errorCode_genericFallback: an uncoded Fail carries the generic code
-// `error`, so (*** error) matches it.
-func TestRerc_errorCode_genericFallback(t *testing.T) {
-	failed, err := rerc("undefined-sym (*** error)")
-	if failed || err != nil {
-		t.Errorf("got failed=%v err=%v, want false nil", failed, err)
-	}
+// TestFail_genericCode: an uncoded Fail carries the generic code `error`, which
+// (*** error) would match. Every built-in operation now raises a specific code,
+// so this contract is verified directly rather than through a Scheme expression.
+func TestFail_genericCode(t *testing.T) {
+	defer func() {
+		r := recover()
+		c, ok := r.(Condition)
+		if !ok {
+			t.Fatalf("Fail panicked with %T, want Condition", r)
+		}
+		if c.code != symbol("error") {
+			t.Errorf("uncoded Fail code = %q, want \"error\"", c.code)
+		}
+	}()
+	Fail("boom")
 }
 
 // TestErrorExpectation parses the (*** [code]) datum form directly.

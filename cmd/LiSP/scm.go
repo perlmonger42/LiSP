@@ -141,7 +141,7 @@ func evaluate(expression scmer, r *env, k continuation) (cont continuation, valu
 	case array: // R5RS 4.1.3 "Procedure calls"
 		return evaluateProcedureCallSyntax(e, r, k)
 	default:
-		Fail("evaluate: unknown expression type: %T %e", expression, expression)
+		Failc("eval-unknown-type", "eval: cannot evaluate value of type %T: %s", expression, expression)
 	}
 	return
 }
@@ -152,7 +152,7 @@ func evaluateVariable(e scmer, r *env, k continuation) (continuation, scmer) {
 
 func evaluateProcedureCallSyntax(e array, r *env, k continuation) (continuation, scmer) {
 	if len(e) == 0 {
-		Fail("missing functor in expression: ()")
+		Failc("empty-application", "eval: cannot apply the empty list ()")
 		panic("unreachable")
 	}
 	switch car, _ := e[0].(symbol); car {
@@ -201,7 +201,7 @@ func evaluateLambdaSyntax(form array, r *env, k continuation) (continuation, scm
 	// Precondition: form[0] is |lambda|
 	// Match: (lambda <formals> <body1> <body2> ...)
 	if len(form) < 3 {
-		Fail("invalid (lambda ...) syntax: %s", form)
+		Failc("lambda-syntax", "lambda: invalid syntax: %s", form)
 	}
 	// TODO: validate the shape of formals
 	formals, body := form[1], form[2:]
@@ -241,7 +241,7 @@ func evaluateSetVariableSyntax(form array, r *env, k continuation) (continuation
 	expectArgs("set!", form[1:], 2, 2)
 	sym, value := form[1], form[2]
 	if s, ok := sym.(symbol); !ok {
-		Fail("set!: first argument must be a symbol")
+		Failc("set!-target-not-symbol", "set!: assignment target must be a symbol: %s", sym)
 		panic("unreachable")
 	} else {
 		return evaluate(value, r, varSetCont{s, r, k})
@@ -300,15 +300,15 @@ func checkCondSyntax(form array) {
 	for i, clauseExpr := range clauses {
 		isLastClause := i == len(clauses)-1
 		if clause, ok := clauseExpr.(array); !ok {
-			Failc("cond-clause-not-list", "cond: clause #%d is not a list, which is invalid syntax: %s", i+1, form)
+			Failc("cond-clause-not-list", "cond: clause #%d is not a list: %s", i+1, form)
 			panic("unreachable")
 		} else if len(clause) == 0 {
-			Failc("cond-clause-empty", "cond: clause #%d is an empty list, which is invalid syntax: %s", i+1, form)
+			Failc("cond-clause-empty", "cond: clause #%d is an empty list: %s", i+1, form)
 			panic("unreachable")
 		} else if isLastClause && clause[0] == symbol("else") {
 			// `(else ...)` is special, but only as the last clause.
 			if len(clause) < 2 {
-				Failc("cond-else-no-consequent", "cond: clause #%d is an else clause without at least one consequent, which is invalid syntax: %s", i+1, form)
+				Failc("cond-else-no-consequent", "cond: clause #%d is an else clause with no consequent: %s", i+1, form)
 				panic("unreachable")
 			}
 		}
@@ -430,16 +430,16 @@ func evaluateLetSyntax(form array, r *env, k continuation) (continuation, scmer)
 	bindings, body := form[1], form[2:]
 	b, ok := bindings.(array)
 	if !ok {
-		Fail("invalid (let ((var1 init1)...) body...) syntax: bindings must be a list")
+		Failc("let-bindings-not-list", "let: bindings must be a list: %s", bindings)
 	}
 	vars := make(array, len(b)) // TODO: make vars []symbol instead of []scmer
 	inits := make(array, len(b))
 	for i, varVal := range b {
 		if pair, ok := varVal.(array); !ok || len(pair) != 2 {
-			Fail("invalid (let ((var1 init1)...) body...) syntax: bindings must be 2-element lists")
+			Failc("let-binding-not-pair", "let: each binding must be a (variable init) list: %s", varVal)
 			panic("unreachable")
 		} else if varName, ok := pair[0].(symbol); !ok {
-			Fail("invalid (let ((var1 init1)...) body...) syntax: bindings must bind symbols")
+			Failc("let-binding-not-symbol", "let: binding variable must be a symbol: %s", pair[0])
 			panic("unreachable")
 		} else {
 			vars[i] = varName
@@ -484,7 +484,7 @@ func evaluateDefineSyntax(form array, r *env, k continuation) (continuation, scm
 		r.Define(fnName, proc{args, body, r})
 		return k, undef(symbol("define"), fnName)
 	}
-	Fail("invalid (define ...) syntax: %s", form)
+	Failc("define-syntax", "define: invalid syntax: %s", form)
 	panic("unreachable")
 }
 
@@ -537,7 +537,7 @@ func invoke(functor scmer, args array, r *env, k continuation) (continuation, sc
 	case proc:
 		return invokeProc(f, args, r, k)
 	}
-	Fail("invalid functor: %T %s", functor, functor)
+	Failc("not-a-procedure", "application: %s is not a procedure", functor)
 	panic("unreachable")
 }
 
@@ -550,7 +550,7 @@ func invokeProc(f proc, args array, r *env, k continuation) (continuation, scmer
 		env := f.en.Extend1(a, args)
 		return evaluateBeginSyntax(f.body, env, k)
 	default:
-		Fail("invalid proc parameters: %T %s", f.params, f.params)
+		Failc("lambda-bad-params", "lambda: invalid parameter list: %s", f.params)
 		panic("unreachable")
 	}
 }
@@ -681,14 +681,14 @@ func (e *env) Find(s symbol) *env {
 func (e *env) Lookup(s symbol) scmer {
 	r := e.Find(s)
 	if r == nil {
-		Fail("undefined symbol: %s", s)
+		Failc("unbound-variable", "unbound variable: %s", s)
 	}
 	return r.scope[s]
 }
 
 func (r *env) Define(variable symbol, value scmer) {
 	if _, ok := r.scope[variable]; ok {
-		Fail("symbol %s already defined in this context", variable)
+		Failc("already-defined", "define: %s is already defined in this scope", variable)
 	}
 	r.scope[variable] = value
 }
@@ -702,7 +702,7 @@ func (orig *env) Extend1(variable symbol, value scmer) (e *env) {
 func (orig *env) Extend(variables, values array) (e *env) {
 	e = &env{make(scope), orig}
 	if len(variables) != len(values) {
-		Fail("arity mismatch")
+		Failc("arity-mismatch", "procedure expected %d arguments but received %d", len(variables), len(values))
 	}
 	for i, val := range values {
 		e.scope[variables[i].(symbol)] = val
@@ -712,7 +712,7 @@ func (orig *env) Extend(variables, values array) (e *env) {
 
 func (r *env) Set(variable symbol, value scmer) {
 	if t := r.Find(variable); t == nil {
-		Fail("set: symbol '%s' is not defined", variable)
+		Failc("unbound-variable", "set!: cannot assign unbound variable: %s", variable)
 	} else {
 		t.scope[variable] = value
 	}
@@ -727,11 +727,11 @@ func (r *env) Set(variable symbol, value scmer) {
 func expectArgs(fnName string, arguments array, minArgs, maxArgs int) {
 	argCount := len(arguments)
 	if minArgs == maxArgs && argCount != minArgs {
-		Fail("%s: expected exactly %d arguments but received %d", fnName, minArgs, argCount)
+		Failc("arity-error", "%s: expected exactly %d arguments but received %d", fnName, minArgs, argCount)
 	} else if argCount < minArgs {
-		Fail("%s: expected at least %d arguments but received %d", fnName, minArgs, argCount)
+		Failc("arity-error", "%s: expected at least %d arguments but received %d", fnName, minArgs, argCount)
 	} else if argCount > maxArgs {
-		Fail("%s: expected at most %d arguments but received %d", fnName, maxArgs, argCount)
+		Failc("arity-error", "%s: expected at most %d arguments but received %d", fnName, maxArgs, argCount)
 	}
 }
 
@@ -747,10 +747,10 @@ func primApply(args array, r *env, k continuation) (continuation, scmer) {
 	// (apply proc arg1... args)
 	expectArgs("apply", args, 2, math.MaxInt)
 	if functor, ok := asFunctor(args[0]); !ok {
-		Fail("apply: first argument must be a procedure")
+		Failc("not-a-procedure", "apply: first argument is not a procedure: %s", args[0])
 		panic("unreachable")
 	} else if lastArg, ok := args[len(args)-1].(array); !ok {
-		Fail("apply: last argument must be a list")
+		Failc("apply-last-not-list", "apply: last argument must be a list: %s", args[len(args)-1])
 		panic("unreachable")
 	} else {
 		arguments := append(args[1:len(args)-1], lastArg...)
@@ -872,11 +872,11 @@ func init() {
 		},
 		"error": func(a array, r *env, k continuation) (continuation, scmer) {
 			if len(a) == 0 {
-				Fail("error")
+				Failc("user-error", "error: unspecified error")
 			} else if len(a) == 1 {
-				Fail("error: %s", a[0])
+				Failc("user-error", "%s", a[0])
 			} else {
-				Fail("error: %s", a)
+				Failc("user-error", "%s %s", a[0], a[1:]) // message plus irritants
 			}
 			panic("unreachable")
 		},

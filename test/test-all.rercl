@@ -42,8 +42,8 @@
     ((lambda (x y z) x y) 4 5 6)  5             ; multiple body exprs
     ;(lambda l l)                 (lambda l l)  ; variadic lambda
     ((lambda x x) 1 2 3)          (1 2 3)       ; variadic lambda
-    (lambda 7)                    ***           ; invalid syntax
-    (lambda (7))                  ***           ; invalid syntax
+    (lambda 7)                    (*** lambda-syntax)
+    (lambda (7))                  (*** lambda-syntax)
 
 
     ; basic arithmetic
@@ -55,11 +55,11 @@
     (* 13)    13
     (* 2 3)   6
 
-    (-)         ***
+    (-)         (*** arity-error)
     (- 14)      -14
     (- 10 4)    6
     (- 10 1 5)  4
-    (/)         ***
+    (/)         (*** arity-error)
     (/ 4)       0.25
     (/ 10 4)    2.5
     (/ 30 2 3)  5
@@ -82,25 +82,25 @@
     (quote ||)                 ||
     (quote |!@#$|)             |!@#$|
     '|x|                       |x|
-    undefined-sym              ***
+    undefined-sym              (*** unbound-variable)
 
     ; --- missing functor ---
-    (())                             ***
+    (())                             (*** empty-application)
     ; --- invalid functor ---
-    (1)                              ***
+    (1)                              (*** not-a-procedure)
 
     ; --- if ---
-    (if #t      )              ***  ; invalid arity
+    (if #t      )              (*** arity-error)
     (if #t 1 2)                1
     (if #f 1 2)                2
-    (if #t 1 2 3)              ***  ; invalid arity
+    (if #t 1 2 3)              (*** arity-error)
     (if 0 "yes" "no")          "yes"
     (if #t "ok")               "ok"
     (if #f "ok")               (|#%undef| if)
 
     ; --- cond ---
     (cond)                           (|#%undef| cond)
-    (cond 1)                         *** ; invalid syntax
+    (cond 1)                         (*** cond-clause-not-list)
     (cond (2))                       2
     (cond (#t 3))                    3
     (cond (#f 1) (#t 4))             4
@@ -173,15 +173,15 @@
 
     ; --- let ---
     (let ((a 3) (b 4)) (* a b))      12
-    (let 1 body)                     *** ; invalid syntax
-    (let (1) body)                   *** ; invalid syntax
-    (let ((x)) body)                 *** ; invalid syntax
+    (let 1 body)                     (*** let-bindings-not-list)
+    (let (1) body)                   (*** let-binding-not-pair)
+    (let ((x)) body)                 (*** let-binding-not-pair)
 
     ; --- call/cc ---
     (call/cc (lambda (k) 42))                42
     (call/cc (lambda (k) (k 99) 0))          99
-    (call/cc (lambda (k) (k 1 2)))           ***
-    (call/cc (lambda (k) 1) (lambda (k) 2))  ***
+    (call/cc (lambda (k) (k 1 2)))           (*** arity-error)
+    (call/cc (lambda (k) 1) (lambda (k) 2))  (*** arity-error)
 
     ; --- arithmetic ---
     (/ 10 2)                         5
@@ -232,22 +232,22 @@
     (pair? '(1))                     #t
     (pair? null)                     #f
 
-    ; --- error (all three arity branches) ---
-    (error)                          ***
-    (error "oops")                   ***
-    (error "a" "b")                  ***
+    ; --- error (all three arg-count branches) ---
+    (error)                          (*** user-error)
+    (error "oops")                   (*** user-error)
+    (error "a" "b")                  (*** user-error)
 
     ; --- invalid define forms ---
-    (define no-val)                  ***
-    (define (1 2) body)              ***
+    (define no-val)                  (*** define-syntax)
+    (define (1 2) body)              (*** define-syntax)
 
     ; --- duplicate define
     (define dup-def 1)               ---
-    (define dup-def 2)               ***
+    (define dup-def 2)               (*** already-defined)
 
     ; --- lambda arity mismatch
-    ((lambda (x y) x) 1)             ***
+    ((lambda (x y) x) 1)             (*** arity-mismatch)
 
     ; --- set! errors ---
-    (set! 42 0)                      ***
-    (set! no-such-set-var 0)         ***
+    (set! 42 0)                      (*** set!-target-not-symbol)
+    (set! no-such-set-var 0)         (*** unbound-variable)
